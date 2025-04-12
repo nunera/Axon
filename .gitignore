@@ -18,6 +18,20 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# VSCode History
+.history/
+
+# VSCode Extensions
+*.vsix
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
