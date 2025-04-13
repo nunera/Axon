@@ -1,7 +1,6 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
     
-    // Form state
     let showSkillModal = $state(false);
     let skillSearchTerm = $state('');
 </script>

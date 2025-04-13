@@ -5,14 +5,12 @@ import { eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
-	// Redirect unauthenticated users to login page
 	if (!event.locals.user) {
 		return redirect(302, '/login');
 	}
 	
 	const userId = event.locals.user.id;
 	
-	// Fetch organizations that the user is a member of
 	const userOrgs = await db
 		.select({
 			id: table.organization.id,
@@ -35,7 +33,6 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
 	createOrganization: async (event) => {
-		// Check authentication
 		if (!event.locals.user) {
 			return fail(401, { message: 'Unauthorized' });
 		}
@@ -45,7 +42,6 @@ export const actions: Actions = {
 		const name = formData.get('name')?.toString();
 		const description = formData.get('description')?.toString() || null;
 		
-		// Basic validation
 		if (!name) {
 			return fail(400, { message: 'Organization name is required' });
 		}
@@ -55,7 +51,6 @@ export const actions: Actions = {
 		}
 		
 		try {
-			// Insert the organization
 			const [newOrg] = await db
 				.insert(table.organization)
 				.values({
@@ -65,7 +60,6 @@ export const actions: Actions = {
 				})
 				.returning();
 			
-			// Add the creator as an admin
 			await db.insert(table.userOrganization).values({
 				userId,
 				organizationId: newOrg.id,

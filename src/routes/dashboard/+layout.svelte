@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	
-	// Get user from the parent data
 	$: ({ user } = $page.data);
 </script>
 

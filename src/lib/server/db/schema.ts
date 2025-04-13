@@ -34,14 +34,13 @@ export const userOrganization = pgTable(
 		organizationId: integer('organization_id')
 			.notNull()
 			.references(() => organization.id),
-		role: text('role').notNull().default('member') // 'admin', 'member'
+		role: text('role').notNull().default('member')
 	},
 	(t) => ({
 		pk: primaryKey({ columns: [t.userId, t.organizationId] })
 	})
 );
 
-// Import extended schema
 import {
 	task,
 	skill, 
@@ -59,7 +58,6 @@ export type User = typeof user.$inferSelect;
 export type Organization = typeof organization.$inferSelect;
 export type UserOrganization = typeof userOrganization.$inferSelect;
 
-// Export extended schema types and tables
 export {
 	task,
 	skill, 
