@@ -1,9 +1,6 @@
-<script lang="ts">
-	import '../app.css';
-
-	let { children } = $props();
+<script>
+  import '../app.css';
+  import { page } from '$app/stores';
 </script>
 
-<div class="min-h-screen bg-gray-900 text-white">
-	{@render children()}
-</div>
+<slot />

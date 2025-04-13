@@ -106,7 +106,7 @@
 	<div class="mt-4 flex space-x-6" style="transform: translate({$buttonPosition.x}px, {$buttonPosition.y}px);"> <!-- Increased space between buttons -->
 		<a
 			href="/login"
-			class="relative overflow-hidden rounded-lg px-8 py-3 text-sm font-medium text-black shadow-md transition-all duration-300 ease-out hover:scale-105 hover:shadow-lg focus:outline-none focus:ring focus:ring-black focus:ring-opacity-80 active:scale-95"
+			class="relative overflow-hidden px-8 py-3 text-sm font-medium text-black shadow-md transition-all duration-300 ease-out hover:scale-105 hover:shadow-lg focus:outline-none focus:ring focus:ring-black focus:ring-opacity-80 active:scale-95"
 			style="background: #ffffff;"
 		>
 			<span class="relative z-10">Login</span>
@@ -114,7 +114,7 @@
 		</a>
 		<a
 			href="/register"
-			class="relative overflow-hidden rounded-lg px-8 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 ease-out hover:scale-105 hover:shadow-lg focus:outline-none focus:ring focus:ring-white focus:ring-opacity-80 active:scale-95 border-2 border-white"
+			class="relative overflow-hidden px-8 py-3 text-sm font-medium text-white shadow-md transition-all duration-300 ease-out hover:scale-105 hover:shadow-lg focus:outline-none focus:ring focus:ring-white focus:ring-opacity-80 active:scale-95 border-2 border-white"
 			style="background: #000000;"
 		>
 			<span class="relative z-10">Register</span>
