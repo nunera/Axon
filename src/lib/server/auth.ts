@@ -79,3 +79,10 @@ export function deleteSessionTokenCookie(event: RequestEvent) {
 		path: '/'
 	});
 }
+
+export async function deleteUserAccount(userId: string) {
+	// Delete all user sessions first
+	await db.delete(table.session).where(eq(table.session.userId, userId));
+	// Then delete the user
+	await db.delete(table.user).where(eq(table.user.id, userId));
+}
