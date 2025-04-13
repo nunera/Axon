@@ -2,8 +2,19 @@
 	import { enhance } from '$app/forms';
 	import type { PageServerData } from './$types';
 	import { fly, fade } from 'svelte/transition';
+	import SphereVisualization from '$lib/components/SphereVisualization.svelte';
 
-	let { data }: { data: PageServerData } = $props();
+	// Define the expected shape of a skill
+		type Skill = { id: number; name: string; category?: string | null; proficiency?: number };
+
+	// Extend PageServerData locally to include the optional skills property
+	type ExtendedPageData = PageServerData & { 
+		skills?: Skill[];
+		taskSkills?: { [taskId: number]: Skill[] }; // Add taskSkills definition
+		userSkills?: { [userId: string]: Skill[] }; // Add userSkills definition
+	};
+
+	let { data }: { data: ExtendedPageData } = $props();
 	
 	// Active tab state
 	let activeTab = $state('about');
@@ -24,7 +35,12 @@
 	let taskStatus = $state('backlog');
 	let taskPriority = $state('medium');
 	let assignedUserId = $state('');
-	
+	// State for task skills
+	let selectedSkillIds = $state<number[]>([]);
+	let skillSearchTerm = $state('');
+	let availableSkills: Skill[] = [];
+	let filteredSkills = $state<Skill[]>([]);
+
 	// Toggle modals
 	function toggleInviteModal() {
 		showInviteModal = !showInviteModal;
@@ -43,11 +59,39 @@
 		showCreateTaskModal = !showCreateTaskModal;
 		if (showCreateTaskModal) {
 			// Reset form fields
+			// Reset form fields
 			taskTitle = '';
 			taskDescription = '';
 			taskStatus = 'backlog';
 			taskPriority = 'medium';
 			assignedUserId = '';
+			selectedSkillIds = [];
+			skillSearchTerm = ''; // Also reset skill search term
+			
+			// Load available skills from the data, providing an empty array if skills are undefined
+				availableSkills = [...(data.skills ?? [])];
+				filteredSkills = [...(data.skills ?? [])];
+			}
+		}
+	
+	// Skills filtering
+	function filterSkills() {
+		if (!skillSearchTerm) {
+			filteredSkills = [...availableSkills];
+			return;
+		}
+		
+		filteredSkills = availableSkills.filter(skill => 
+			skill.name.toLowerCase().includes(skillSearchTerm.toLowerCase())
+		);
+	}
+	
+	// Toggle skill selection
+	function toggleSkillSelection(skillId: number) {
+		if (selectedSkillIds.includes(skillId)) {
+			selectedSkillIds = selectedSkillIds.filter(id => id !== skillId);
+		} else {
+			selectedSkillIds = [...selectedSkillIds, skillId];
 		}
 	}
 	
@@ -158,6 +202,12 @@
 					onclick={() => activeTab = 'tasks'}
 				>
 					Tasks
+				</button>
+				<button 
+					class="py-4 px-2 border-b-2 {activeTab === 'visualization' ? 'border-white font-medium' : 'border-transparent text-gray-400 hover:text-white'}"
+					onclick={() => activeTab = 'visualization'}
+				>
+					Visualization
 				</button>
 			</nav>
 		</div>
@@ -275,6 +325,17 @@
 												</span>
 											{/if}
 										</div>
+										
+										<!-- Show task skills -->
+										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
+											<div class="mt-2 flex flex-wrap gap-1">
+												{#each data.taskSkills[task.id] as skill}
+													<span class="text-xs bg-blue-900/50 px-1.5 py-0.5 rounded border border-blue-500">
+														{skill.name}
+													</span>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								{/each}
 							</div>
@@ -318,6 +379,17 @@
 												</span>
 											{/if}
 										</div>
+										
+										<!-- Show task skills -->
+										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
+											<div class="mt-2 flex flex-wrap gap-1">
+												{#each data.taskSkills[task.id] as skill}
+													<span class="text-xs bg-blue-900/50 px-1.5 py-0.5 rounded border border-blue-500">
+														{skill.name}
+													</span>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								{/each}
 							</div>
@@ -361,6 +433,17 @@
 												</span>
 											{/if}
 										</div>
+										
+										<!-- Show task skills -->
+										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
+											<div class="mt-2 flex flex-wrap gap-1">
+												{#each data.taskSkills[task.id] as skill}
+													<span class="text-xs bg-blue-900/50 px-1.5 py-0.5 rounded border border-blue-500">
+														{skill.name}
+													</span>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								{/each}
 							</div>
@@ -404,6 +487,17 @@
 												</span>
 											{/if}
 										</div>
+										
+										<!-- Show task skills -->
+										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
+											<div class="mt-2 flex flex-wrap gap-1">
+												{#each data.taskSkills[task.id] as skill}
+													<span class="text-xs bg-blue-900/50 px-1.5 py-0.5 rounded border border-blue-500">
+														{skill.name}
+													</span>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								{/each}
 							</div>
@@ -418,6 +512,49 @@
 					<input id="updateTaskId" name="taskId" type="hidden" />
 					<input id="updateTaskStatus" name="status" type="hidden" />
 				</form>
+			</div>
+		{/if}
+
+		<!-- Visualization Tab -->
+		{#if activeTab === 'visualization'}
+			<div transition:fade={{ duration: 150 }}>
+				<div class="mb-6">
+					<h2 class="text-xl font-semibold mb-4">Sphere Visualization</h2>
+					<p class="text-gray-300 mb-6">
+						This visualization shows the relationships between tasks, skills, and team members in your organization.
+					</p>
+					
+					<!-- Sphere Visualization Component -->
+					<div class="border border-white bg-black p-4 rounded-lg">
+						<SphereVisualization 
+								tasks={data.tasks || {}}
+								skills={data.skills || []}
+								users={data.members || []}
+								taskSkills={data.taskSkills || {}}
+								userSkills={{...(
+									data.userSkills ? Object.fromEntries(
+										data.members.map(member => {
+											const userId = member.userId;
+											const userSkills = data.userSkills?.[userId] || [];
+											return [
+												userId, 
+												{
+													id: userId,
+													username: member.username,
+													skills: userSkills.map(skill => ({ 
+														id: skill.id, 
+														name: skill.name, 
+														proficiency: skill.proficiency
+													}))
+												}
+											]
+										})
+									) : {}
+								)}}
+								height="700px"
+							/>
+					</div>
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -597,6 +734,69 @@
 							<option value={member.userId}>{member.username}</option>
 						{/each}
 					</select>
+				</div>
+
+				<!-- Skills section -->
+				<div class="mb-4">
+					<label for="skillSearch" class="block text-sm font-medium text-white mb-1">Required Skills</label>
+					
+					<!-- Search box -->
+					<input
+						id="skillSearch"
+						type="text"
+						bind:value={skillSearchTerm}
+						oninput={filterSkills}
+						placeholder="Search for skills..."
+						class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white mb-2"
+					/>
+					
+					<!-- Skills selection area -->
+					<div class="border border-white/30 p-2 mb-2 max-h-32 overflow-y-auto">
+						{#if filteredSkills.length > 0}
+							<div class="space-y-1">
+								{#each filteredSkills as skill}
+									<button 
+										type="button"
+										class="w-full text-left p-2 flex justify-between items-center hover:bg-white/10 {selectedSkillIds.includes(skill.id) ? 'bg-white/10 border-l-4 border-green-500' : ''}"
+										onclick={() => toggleSkillSelection(skill.id)}
+									>
+										<div>
+											<span class="font-medium">{skill.name}</span>
+											{#if skill.category}
+												<span class="ml-2 text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">{skill.category}</span>
+											{/if}
+										</div>
+										{#if selectedSkillIds.includes(skill.id)}
+											<span class="text-green-500">✓</span>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-gray-500 italic text-sm p-2">No skills found</p>
+						{/if}
+					</div>
+					
+					<!-- Selected skills -->
+					<div class="flex flex-wrap gap-2">
+						{#each selectedSkillIds as skillId}
+							{#each filteredSkills.filter(s => s.id === skillId) as skill}
+								<div class="bg-purple-900/50 px-2 py-1 rounded flex items-center border border-purple-500 text-sm">
+									<span>{skill.name}</span>
+									<button 
+										type="button"
+										class="ml-2 text-purple-300 hover:text-white"
+										onclick={() => toggleSkillSelection(skill.id)}
+									>×</button>
+								</div>
+							{/each}
+						{/each}
+					</div>
+					
+					<!-- Hidden input with selected skills -->
+					{#each selectedSkillIds as skillId}
+						<input type="hidden" name="skillIds" value={skillId} />
+					{/each}
 				</div>
 				
 				<!-- Hidden organization ID field -->

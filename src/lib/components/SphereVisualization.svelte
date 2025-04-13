@@ -11,7 +11,7 @@
         done?: any[];
     } = { backlog: [], todo: [], 'in-progress': [], done: [] };
     export let skills: any[] = [];
-    export const users: any[] = [];
+    export let users: any[] = [];
     export let taskSkills: Record<number, {id: number, name: string}[]> = {};
     export let userSkills: Record<string, {id: string, username: string, skills: {id: number, name: string, proficiency?: number}[]}> = {};
     export let height: string = '600px';
@@ -22,12 +22,19 @@
     let network: any;
     let selectedNode: any = null;
     let infoVisible = false;
+    
+    // Maps for tracking skills relationships
+    const taskSkillMap: Record<number, number[]> = {};
+    const userSkillMap: Record<string, number[]> = {};
 
     // Create the graph data structure
     function createGraphData() {
         // Create node datasets
         const nodes = new DataSet<Node>();
         const edges = new DataSet<Edge>();
+        
+        // Debug and track visualization creation
+        console.log("Creating sphere visualization with data:", { tasks, users, skills, taskSkills, userSkills });
         
         // Add task nodes
         const allTasks = [
@@ -37,108 +44,157 @@
             ...(tasks.done || [])
         ];
         
+        // First pass: Add all task and user nodes
         allTasks.forEach(task => {
+            // Add task node with enhanced styling
             nodes.add({
                 id: `task-${task.id}`,
                 label: truncateLabel(task.title),
                 title: task.description ? `${task.title}\n\n${task.description}` : task.title,
                 group: 'task',
                 shape: 'box',
-                font: { color: '#ffffff' },
+                font: { color: '#ffffff', face: 'Arial', size: 14 },
                 color: {
                     background: getPriorityColor(task.priority),
                     border: '#ffffff',
                     highlight: { background: '#ffffff', border: '#000000' }
-                }
+                },
+                borderWidth: 2
             });
-
-            // Add task-skill edges
+            
+            // Track skills for this task
             if (taskSkills[task.id]) {
-                taskSkills[task.id].forEach(skill => {
-                    // Add skill node if it doesn't exist yet
-                    if (!nodes.get(`skill-${skill.id}`)) {
-                        nodes.add({
-                            id: `skill-${skill.id}`,
-                            label: skill.name,
-                            group: 'skill',
-                            shape: 'hexagon',
-                            color: { 
-                                background: '#7c3aed',
-                                border: '#ffffff',
-                                highlight: { background: '#9f5afd', border: '#ffffff' }
-                            },
-                            font: { color: '#ffffff' }
-                        });
-                    }
-
-                    // Add edge
-                    edges.add({
-                        from: `task-${task.id}`,
-                        to: `skill-${skill.id}`,
-                        arrows: 'to',
-                        color: { color: '#7c3aed', opacity: 0.6 },
-                    });
-                });
+                taskSkillMap[task.id] = taskSkills[task.id].map(skill => skill.id);
             }
-
-            // Add task-user edges
+            
+            // Add task-user edges for assigned tasks
             if (task.assignedToId) {
                 edges.add({
-                    from: `task-${task.id}`,
-                    to: `user-${task.assignedToId}`,
+                    from: `user-${task.assignedToId}`,
+                    to: `task-${task.id}`,
                     arrows: 'to',
-                    dashes: true,
-                    color: { color: '#ffffff', opacity: 0.8 },
-                    label: 'assigned to'
+                    color: { color: '#10b981', opacity: 1.0 }, // Bright green color
+                    width: 3,
+                    label: 'assigned',
+                    font: { 
+                        color: '#10b981', 
+                        size: 14,
+                        face: 'Arial',
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        strokeWidth: 2
+                    }
                 });
             }
         });
-
-        // Add user nodes
-        Object.values(userSkills).forEach(user => {
+        
+        // Add user nodes for all members
+        users.forEach(member => {
+            const userId = member.userId;
+            const username = member.username;
+            
             nodes.add({
-                id: `user-${user.id}`,
-                label: user.username,
+                id: `user-${userId}`,
+                label: username,
                 group: 'user',
                 shape: 'circularImage',
-                image: getAvatarUrl(user.username),
-                size: 30,
-                borderWidth: 2,
+                image: getAvatarUrl(username),
+                size: 40,
+                borderWidth: 3,
                 color: {
-                    border: '#ffffff',
+                    border: '#4ade80',
                     background: '#18181b',
                     highlight: { background: '#4ade80', border: '#ffffff' }
                 },
-                font: { color: '#ffffff', size: 14, face: 'Arial' }
+                font: { color: '#4ade80', size: 16, face: 'Arial' }
             });
-
-            // Add user-skill edges
-            user.skills.forEach(skill => {
-                // Add skill node if it doesn't exist yet
-                if (!nodes.get(`skill-${skill.id}`)) {
-                    nodes.add({
-                        id: `skill-${skill.id}`,
-                        label: skill.name,
-                        group: 'skill',
-                        shape: 'hexagon',
-                        color: { 
-                            background: '#7c3aed',
-                            border: '#ffffff',
-                            highlight: { background: '#9f5afd', border: '#ffffff' }
+            
+            // Track skills for this user if they have any
+            if (userSkills[userId]) {
+                userSkillMap[userId] = userSkills[userId].skills.map(skill => skill.id);
+            } else {
+                userSkillMap[userId] = [];  // Empty skills array for users without skills
+            }
+        });
+        
+        // Create skill connections between users and tasks
+        // This creates visible connections between users and tasks that share skills
+        
+        // For every task in all columns
+        allTasks.forEach(task => {
+            // For every user
+            users.forEach(member => {
+                const userId = member.userId;
+                const username = member.username;
+                
+                // Skip if this user is already assigned to the task (we already have a different connection)
+                if (task.assignedToId === userId) return;
+                
+                // Get task skills
+                const taskSkillsList = taskSkills[task.id] || [];
+                const taskSkillIds = taskSkillsList.map(skill => Number(skill.id));
+                
+                // Skip tasks with no skills defined
+                if (taskSkillIds.length === 0) return;
+                
+                // Get user skills
+                const userSkillsObj = userSkills[userId];
+                if (!userSkillsObj || !userSkillsObj.skills) return;
+                
+                const userSkillIds = userSkillsObj.skills.map(skill => Number(skill.id));
+                
+                // Skip users with no skills
+                if (userSkillIds.length === 0) return;
+                
+                // Find matching skills by comparing IDs
+                const matchingSkills: {id: number, name: string}[] = [];
+                
+                // Check each task skill against each user skill
+                taskSkillsList.forEach(taskSkill => {
+                    const taskSkillId = Number(taskSkill.id);
+                    
+                    // If user has this skill
+                    if (userSkillIds.includes(taskSkillId)) {
+                        matchingSkills.push({
+                            id: taskSkillId,
+                            name: taskSkill.name
+                        });
+                    }
+                });
+                
+                // Create yellow connection if there are matching skills
+                if (matchingSkills.length > 0) {
+                    const skillNames = matchingSkills.map(skill => skill.name).join(', ');
+                    
+                    // Calculate edge width based on number of matching skills (more matches = thicker line)
+                    const edgeWidth = Math.min(1 + matchingSkills.length, 8); // Cap width at 8
+                    
+                    // Create a prominent visible edge showing the skill match
+                    edges.add({
+                        id: `skill-match-${userId}-${task.id}`,
+                        from: `user-${userId}`,
+                        to: `task-${task.id}`,
+                        color: { color: '#FBBF24', opacity: 0.9 },  // Slightly transparent yellow
+                        arrows: {
+                            to: { enabled: true, scaleFactor: 0.5 } // Smaller arrow
                         },
-                        font: { color: '#ffffff' }
+                        dashes: [5, 3], // Make dash pattern more visible
+                        width: edgeWidth, // Make width based on number of matches
+                        title: `Matching skills: ${skillNames}`,
+                        label: matchingSkills.length > 1 ? `${matchingSkills.length} skills` : skillNames,
+                        font: {
+                            color: '#FBBF24',
+                            size: 12,
+                            background: 'rgba(0, 0, 0, 0.8)',
+                            strokeWidth: 2
+                        },
+                        physics: true,
+                        smooth: {
+                            enabled: true,
+                            type: "dynamic",
+                            roundness: 0.5
+                        }
                     });
                 }
-
-                // Add edge with width based on proficiency
-                const proficiency = skill.proficiency || 1;
-                edges.add({
-                    from: `user-${user.id}`,
-                    to: `skill-${skill.id}`,
-                    color: { color: '#4ade80', opacity: 0.6 },
-                    width: proficiency, // Width based on proficiency
-                    title: `Proficiency: ${getProficiencyDisplay(proficiency)}`
-                });
             });
         });
 
@@ -187,11 +243,19 @@
     function handleNodeClick(params: any) {
         if (params.nodes.length > 0) {
             const nodeId = params.nodes[0];
+            const nodeType = nodeId.split('-')[0];
+            const nodeData = getNodeData(nodeId);
+            
+            // Debug logging to see what's happening when a node is clicked
+            console.log("Node clicked:", { nodeId, nodeType, nodeData });
+            
             selectedNode = {
                 id: nodeId,
-                type: nodeId.split('-')[0],
-                data: getNodeData(nodeId)
+                type: nodeType,
+                data: nodeData
             };
+            
+            // Always show the info panel when a node is clicked
             infoVisible = true;
         } else {
             selectedNode = null;
@@ -215,8 +279,33 @@
             }
             case 'skill':
                 return skills.find(skill => skill.id.toString() === id);
-            case 'user':
-                return userSkills[id];
+            case 'user': {
+                // First try to find the user in the userSkills object
+                const userSkillData = userSkills[id];
+                
+                if (userSkillData) {
+                    // User found in userSkills
+                    console.log("Found user in userSkills:", userSkillData);
+                    return userSkillData;
+                } else {
+                    // If not found in userSkills, try to find in users array
+                    console.log("User not found in userSkills, checking users array...");
+                    const user = users.find(u => u.userId === id);
+                    
+                    if (user) {
+                        console.log("Found user in users array:", user);
+                        // Create a compatible data structure
+                        return {
+                            id: user.userId,
+                            username: user.username,
+                            skills: [] // No skills available from users array
+                        };
+                    }
+                    
+                    console.log("User not found in either source:", id);
+                    return null;
+                }
+            }
             default:
                 return null;
         }
@@ -354,16 +443,16 @@
                             class="w-16 h-16 rounded-full mr-4 border-2 border-white"
                         />
                         <h3 class="text-xl font-bold">{selectedNode.data.username}</h3>
-                    </div>
-                    
-                    {#if selectedNode.data.skills && selectedNode.data.skills.length > 0}
-                        <div>
-                            <h4 class="text-gray-300 font-medium mb-1">Skills:</h4>
-                            <div class="flex flex-wrap gap-2">
+                    </div>                        <!-- User skills section -->
+                    <div class="mt-4">
+                        <h4 class="text-gray-300 font-medium mb-2">Skills:</h4>
+                        {#if selectedNode.data?.skills && Array.isArray(selectedNode.data.skills) && selectedNode.data.skills.length > 0}
+                            <!-- User has skills directly in the data object -->
+                            <div class="flex flex-wrap gap-2 mb-4">
                                 {#each selectedNode.data.skills as skill}
                                     <span class="bg-green-900/50 text-xs px-2 py-1 rounded border border-green-500 flex items-center">
                                         <span>{skill.name}</span>
-                                        {#if skill.proficiency}
+                                        {#if skill.proficiency !== undefined && skill.proficiency !== null}
                                             <span class="ml-1 px-1 py-0.5 text-xs rounded bg-green-700/50 border border-green-400">
                                                 {getProficiencyDisplay(skill.proficiency)}
                                             </span>
@@ -371,8 +460,53 @@
                                     </span>
                                 {/each}
                             </div>
+                        {:else if selectedNode.data?.id && userSkillMap[selectedNode.data.id] && userSkillMap[selectedNode.data.id].length > 0}
+                            <!-- Fallback to userSkillMap if direct skills aren't available -->
+                            <div class="flex flex-wrap gap-2 mb-4">
+                                {#each userSkillMap[selectedNode.data.id] as skillId}
+                                    {#if skills.find(s => s.id === skillId)}
+                                        <span class="bg-green-900/50 text-xs px-2 py-1 rounded border border-green-500">
+                                            {skills.find(s => s.id === skillId).name}
+                                        </span>
+                                    {/if}
+                                {/each}
+                            </div>
+                        {:else}
+                            <!-- Add debugging info to help trace the issue -->
+                            <p class="text-gray-400 text-sm italic mb-4">No skills specified</p>
+                            <!-- Hidden debugging info that will appear in console -->
+                            <script>
+                                console.log("Debug - No skills found:", {
+                                    userData: selectedNode.data,
+                                    userSkillMapEntry: selectedNode.data?.id ? userSkillMap[selectedNode.data.id] : null,
+                                    allSkills: skills
+                                });
+                            </script>
+                        {/if}
+                        
+                        <!-- Related tasks section -->
+                        <h4 class="text-gray-300 font-medium mb-2">Matching Tasks:</h4>
+                        <div class="space-y-2">
+                            {#each processedTasks.filter(task => {
+                                // Get task skills
+                                const taskSkillIds = (taskSkills[task.id] || []).map(s => s.id);
+                                // Get user skills
+                                const userSkillIds = (selectedNode.data.skills || []).map((s: {id: number}) => s.id);
+                                // Check if there are any matching skills
+                                return taskSkillIds.some(skillId => userSkillIds.includes(skillId));
+                            }) as matchingTask}
+                                <div class="border border-yellow-500/30 bg-yellow-900/20 p-2 rounded text-sm">
+                                    <div class="flex justify-between items-center">
+                                        <span>{matchingTask.title}</span>
+                                        <span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize">{matchingTask.priority}</span>
+                                    </div>
+                                    {#if matchingTask.assignedToId === selectedNode.data.id}
+                                        <span class="text-xs text-green-400 mt-1 block">Assigned to this user</span>
+                                    {/if}
+                                </div>
+                            {/each}
                         </div>
-                    {/if}
+                    </div>
                 </div>
             
             <!-- Skill info -->

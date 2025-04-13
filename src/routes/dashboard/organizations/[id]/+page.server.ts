@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -83,13 +83,50 @@ export const load: PageServerLoad = async (event) => {
 		'in-progress': tasks.filter(task => task.status === 'in-progress'),
 		done: tasks.filter(task => task.status === 'done')
 	};
+	
+	// Fetch all skills for task creation
+	const skills = await db.select().from(table.skill).orderBy(table.skill.name);
+	
+	// Fetch task skills for each task
+	const taskSkillsData = await db
+		.select({
+			taskId: table.taskSkill.taskId,
+			skillId: table.taskSkill.skillId,
+			skillName: table.skill.name,
+			skillCategory: table.skill.category
+		})
+		.from(table.taskSkill)
+		.innerJoin(
+			table.skill,
+			eq(table.taskSkill.skillId, table.skill.id)
+		)
+		.where(
+			inArray(table.taskSkill.taskId, tasks.map(t => t.id))
+		);
+	
+	// Organize task skills by task ID
+	const taskSkills: Record<string, { id: number, name: string, category: string | null }[]> = {};
+	
+	taskSkillsData.forEach(item => {
+		if (!taskSkills[item.taskId]) {
+			taskSkills[item.taskId] = [];
+		}
+		
+		taskSkills[item.taskId].push({
+			id: item.skillId,
+			name: item.skillName,
+			category: item.skillCategory
+		});
+	});
 
 	return {
 		organization,
 		members,
 		userRole: userMembership.role,
 		userId,
-		tasks: groupedTasks
+		tasks: groupedTasks,
+		skills,
+		taskSkills
 	};
 };
 
@@ -319,8 +356,12 @@ export const actions: Actions = {
 			}
 		}
 
+		// Get any skill IDs from the form
+		const skillIds = formData.getAll('skillIds').map(id => parseInt(id.toString()));
+
 		try {
-			await db.insert(table.task).values({
+			// Insert the task and get its ID
+			const [newTask] = await db.insert(table.task).values({
 				title,
 				description,
 				status,
@@ -329,7 +370,20 @@ export const actions: Actions = {
 				organizationId: orgId,
 				createdAt: new Date(),
 				assignedToId: assignedToId || null
-			});
+			}).returning({ id: table.task.id });
+			
+			// If there are skills selected, add them to the task_skill table
+			if (skillIds.length > 0) {
+				// Create entries for task_skill relation
+				const taskSkillValues = skillIds.map(skillId => ({
+					taskId: newTask.id,
+					skillId,
+					importance: 3 // Default medium importance
+				}));
+				
+				// Insert the task skills
+				await db.insert(table.taskSkill).values(taskSkillValues);
+			}
 
 			return { success: true };
 		} catch (error) {

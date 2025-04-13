@@ -63,17 +63,6 @@
                     <h3 class="text-lg font-semibold mb-3">Visualization Preferences</h3>
                     <div class="space-y-4">
                         <div>
-                            <label for="visualizationMode" class="block text-sm font-medium text-white mb-1">Default Visualization Mode</label>
-                            <select
-                                id="visualizationMode"
-                                name="visualizationMode"
-                                class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
-                            >
-                                <option value="kanban">Kanban View</option>
-                                <option value="sphere">Sphere Visualization</option>
-                            </select>
-                        </div>
-                        <div>
                             <label for="skillEdgeDetail" class="block text-sm font-medium text-white mb-1">Skill Edge Detail Level</label>
                             <select
                                 id="skillEdgeDetail"
