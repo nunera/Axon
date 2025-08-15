@@ -7,41 +7,54 @@
 
 	let { data }: { data: PageServerData } = $props();
 	
+	// State for delete account confirmation modal - using $state for reactivity
 	let showDeleteConfirmation = $state(false);
 	
+	// Toggle delete confirmation modal
 	function toggleDeleteConfirmation() {
 		showDeleteConfirmation = !showDeleteConfirmation;
 	}
 	
+	// Create a writable store for smooth movement
 	const position = writable({ x: 0, y: 0 });
 	
+	// Spring physics parameters
 	const stiffness = 0.1;
 	const damping = 0.6;
 	
+	// Target and current positions
 	let target = { x: 0, y: 0 };
 	let current = { x: 0, y: 0 };
 	let velocity = { x: 0, y: 0 };
 	
+	// Animation frame handler
 	let animationId: number;
 	
 	function animate() {
+		// Calculate spring physics
 		const dx = target.x - current.x;
 		const dy = target.y - current.y;
 		
+		// Apply spring force
 		velocity.x += dx * stiffness;
 		velocity.y += dy * stiffness;
 		
+		// Apply damping
 		velocity.x *= damping;
 		velocity.y *= damping;
 		
+		// Update position
 		current.x += velocity.x;
 		current.y += velocity.y;
 		
+		// Update store
 		position.set(current);
 		
+		// Continue animation
 		animationId = requestAnimationFrame(animate);
 	}
 	
+	// Only run animation in browser environment
 	onMount(() => {
 		if (browser) {
 			animationId = requestAnimationFrame(animate);
@@ -55,9 +68,11 @@
 	});
 	
 	function handleMouseMove(event: MouseEvent) {
+		// Calculate mouse position relative to center of viewport
 		const mouseX = event.clientX - window.innerWidth / 2;
 		const mouseY = event.clientY - window.innerHeight / 2;
 		
+		// Update the target position (which our spring animation will follow)
 		target.x = mouseX * 0.02;
 		target.y = mouseY * 0.02;
 	}
@@ -111,6 +126,7 @@
 	</div>
 </div>
 	
+	<!-- Delete Account Confirmation Modal -->
 	{#if showDeleteConfirmation}
 		<div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
 			<div class="bg-black p-8 shadow-xl border-2 border-white max-w-md w-full">

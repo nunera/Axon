@@ -66,6 +66,7 @@ export const actions: Actions = {
 
 		const userId = generateUserId();
 		const passwordHash = await hash(password, {
+			// recommended minimum parameters
 			memoryCost: 19456,
 			timeCost: 2,
 			outputLen: 32,
@@ -86,6 +87,7 @@ export const actions: Actions = {
 };
 
 function generateUserId() {
+	// ID with 120 bits of entropy, or about the same as UUID v4.
 	const bytes = crypto.getRandomValues(new Uint8Array(15));
 	const id = encodeBase32LowerCase(bytes);
 	return id;

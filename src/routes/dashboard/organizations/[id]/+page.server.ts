@@ -5,6 +5,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
+	// Redirect unauthenticated users to login page
 	if (!event.locals.user) {
 		return redirect(302, '/login');
 	}
@@ -16,6 +17,7 @@ export const load: PageServerLoad = async (event) => {
 
 	const userId = event.locals.user.id;
 
+	// Check if user is a member of this organization
 	const [userMembership] = await db
 		.select()
 		.from(table.userOrganization)
@@ -25,9 +27,11 @@ export const load: PageServerLoad = async (event) => {
 		));
 
 	if (!userMembership) {
+		// User is not a member of this organization
 		return redirect(302, '/dashboard/organizations');
 	}
 
+	// Fetch organization details
 	const [organization] = await db
 		.select()
 		.from(table.organization)
@@ -37,6 +41,7 @@ export const load: PageServerLoad = async (event) => {
 		return redirect(302, '/dashboard/organizations');
 	}
 
+	// Fetch members of the organization
 	const members = await db
 		.select({
 			userId: table.user.id,
@@ -50,6 +55,7 @@ export const load: PageServerLoad = async (event) => {
 		)
 		.where(eq(table.userOrganization.organizationId, orgId));
 	
+	// Fetch organization tasks
 	const tasks = await db
 		.select({
 			id: table.task.id,
@@ -70,6 +76,7 @@ export const load: PageServerLoad = async (event) => {
 		)
 		.where(eq(table.task.organizationId, orgId));
 	
+	// Group tasks by status
 	const groupedTasks = {
 		backlog: tasks.filter(task => task.status === 'backlog'),
 		todo: tasks.filter(task => task.status === 'todo'),
@@ -77,8 +84,10 @@ export const load: PageServerLoad = async (event) => {
 		done: tasks.filter(task => task.status === 'done')
 	};
 	
+	// Fetch all skills for task creation
 	const skills = await db.select().from(table.skill).orderBy(table.skill.name);
 	
+	// Fetch task skills for each task
 	const taskSkillsData = await db
 		.select({
 			taskId: table.taskSkill.taskId,
@@ -95,6 +104,7 @@ export const load: PageServerLoad = async (event) => {
 			inArray(table.taskSkill.taskId, tasks.map(t => t.id))
 		);
 	
+	// Organize task skills by task ID
 	const taskSkills: Record<string, { id: number, name: string, category: string | null }[]> = {};
 	
 	taskSkillsData.forEach(item => {
@@ -133,6 +143,7 @@ export const actions: Actions = {
 
 		const userId = event.locals.user.id;
 
+		// Check if user is an admin of this organization
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
@@ -152,6 +163,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Username is required' });
 		}
 
+		// Find the user to invite
 		const [userToInvite] = await db
 			.select()
 			.from(table.user)
@@ -161,6 +173,7 @@ export const actions: Actions = {
 			return fail(404, { error: 'User not found' });
 		}
 
+		// Check if user is already a member
 		const [existingMembership] = await db
 			.select()
 			.from(table.userOrganization)
@@ -173,6 +186,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'User is already a member of this organization' });
 		}
 
+		// Add the new member
 		try {
 			await db.insert(table.userOrganization).values({
 				userId: userToInvite.id,
@@ -199,6 +213,7 @@ export const actions: Actions = {
 
 		const userId = event.locals.user.id;
 
+		// Check if user is an admin of this organization
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
@@ -218,19 +233,23 @@ export const actions: Actions = {
 			return fail(400, { error: 'Member ID is required' });
 		}
 
+		// Get organization details to check if the member is the creator
 		const [organization] = await db
 			.select()
 			.from(table.organization)
 			.where(eq(table.organization.id, orgId));
 
+		// Cannot remove the organization creator
 		if (memberId === organization.createdById) {
 			return fail(403, { error: 'Cannot remove the organization owner' });
 		}
 
+		// Cannot remove yourself this way
 		if (memberId === userId) {
 			return fail(400, { error: 'Cannot remove yourself. Use leave organization instead' });
 		}
 
+		// Remove the member
 		try {
 			await db
 				.delete(table.userOrganization)
@@ -258,15 +277,18 @@ export const actions: Actions = {
 
 		const userId = event.locals.user.id;
 
+		// Get organization details to check if the user is the creator
 		const [organization] = await db
 			.select()
 			.from(table.organization)
 			.where(eq(table.organization.id, orgId));
 
+		// Cannot leave if you are the creator
 		if (userId === organization.createdById) {
 			return fail(403, { error: 'Organization creators cannot leave their organizations' });
 		}
 
+		// Remove the user from the organization
 		try {
 			await db
 				.delete(table.userOrganization)
@@ -275,6 +297,7 @@ export const actions: Actions = {
 					eq(table.userOrganization.organizationId, orgId)
 				));
 
+			// Redirect to organizations list after successful leave
 			return redirect(302, '/dashboard/organizations');
 		} catch (error) {
 			console.error('Error leaving organization:', error);
@@ -294,6 +317,7 @@ export const actions: Actions = {
 
 		const userId = event.locals.user.id;
 
+		// Check if user is a member of this organization
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
@@ -317,6 +341,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Task title is required' });
 		}
 
+		// If assignedToId is provided, verify that the assigned user is a member of the organization
 		if (assignedToId) {
 			const [assignedUserMembership] = await db
 				.select()
@@ -331,9 +356,11 @@ export const actions: Actions = {
 			}
 		}
 
+		// Get any skill IDs from the form
 		const skillIds = formData.getAll('skillIds').map(id => parseInt(id.toString()));
 
 		try {
+			// Insert the task and get its ID
 			const [newTask] = await db.insert(table.task).values({
 				title,
 				description,
@@ -345,13 +372,16 @@ export const actions: Actions = {
 				assignedToId: assignedToId || null
 			}).returning({ id: table.task.id });
 			
+			// If there are skills selected, add them to the task_skill table
 			if (skillIds.length > 0) {
+				// Create entries for task_skill relation
 				const taskSkillValues = skillIds.map(skillId => ({
 					taskId: newTask.id,
 					skillId,
-					importance: 3
+					importance: 3 // Default medium importance
 				}));
 				
+				// Insert the task skills
 				await db.insert(table.taskSkill).values(taskSkillValues);
 			}
 
@@ -374,6 +404,7 @@ export const actions: Actions = {
 
 		const userId = event.locals.user.id;
 
+		// Check if user is a member of this organization
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
@@ -394,6 +425,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Invalid task data' });
 		}
 
+		// Verify the task belongs to this organization
 		const [task] = await db
 			.select()
 			.from(table.task)
