@@ -39,7 +39,7 @@ Axon is a collaborative task management platform designed to help teams organize
 
 1. Clone the repository:
    ```bash
-   git clone https://gitlab.com/nunera/axon.git
+   git clone https://github.com/yourusername/axon.git
    cd axon
    ```
 
