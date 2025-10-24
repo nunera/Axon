@@ -21,21 +21,21 @@ export const actions: Actions = {
 		// Redirect to login page after logout
 		return redirect(302, '/login');
 	},
-	
+
 	deleteAccount: async (event) => {
 		if (!event.locals.session || !event.locals.user) {
 			return fail(401);
 		}
-		
+
 		// Get the user ID
 		const userId = event.locals.user.id;
-		
+
 		// Delete the user account - this will also delete their sessions
 		await auth.deleteUserAccount(userId);
-		
+
 		// Delete the session cookie
 		auth.deleteSessionTokenCookie(event);
-		
+
 		// Redirect to homepage after account deletion
 		return redirect(302, '/');
 	}

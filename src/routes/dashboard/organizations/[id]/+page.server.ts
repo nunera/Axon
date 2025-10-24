@@ -22,10 +22,12 @@ export const load: PageServerLoad = async (event) => {
 	const [userMembership] = await db
 		.select()
 		.from(table.userOrganization)
-		.where(and(
-			eq(table.userOrganization.userId, userId),
-			eq(table.userOrganization.organizationId, orgId)
-		));
+		.where(
+			and(
+				eq(table.userOrganization.userId, userId),
+				eq(table.userOrganization.organizationId, orgId)
+			)
+		);
 
 	if (!userMembership) {
 		// User is not a member of this organization
@@ -50,12 +52,9 @@ export const load: PageServerLoad = async (event) => {
 			role: table.userOrganization.role
 		})
 		.from(table.userOrganization)
-		.innerJoin(
-			table.user,
-			eq(table.userOrganization.userId, table.user.id)
-		)
+		.innerJoin(table.user, eq(table.userOrganization.userId, table.user.id))
 		.where(eq(table.userOrganization.organizationId, orgId));
-	
+
 	const assignedUser = alias(table.user, 'assigned_user');
 	const creatorUser = alias(table.user, 'creator_user');
 
@@ -103,11 +102,11 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const tasksWithAssignees = tasks.map((task) => {
-		const assignees = assigneesByTask.get(task.id) ?? (
-			task.assignedToId && task.assignedToUsername
+		const assignees =
+			assigneesByTask.get(task.id) ??
+			(task.assignedToId && task.assignedToUsername
 				? [{ userId: task.assignedToId, username: task.assignedToUsername }]
-				: []
-		);
+				: []);
 		return { ...task, assignees, createdBy: task.createdByUsername ?? '' };
 	});
 
@@ -118,10 +117,10 @@ export const load: PageServerLoad = async (event) => {
 		'in-progress': tasksWithAssignees.filter((task) => task.status === 'in-progress'),
 		done: tasksWithAssignees.filter((task) => task.status === 'done')
 	};
-	
+
 	// Fetch all skills for task creation
 	const skills = await db.select().from(table.skill).orderBy(table.skill.name);
-	
+
 	// Fetch task skills for each task
 	let taskSkillsData: {
 		taskId: number;
@@ -138,21 +137,18 @@ export const load: PageServerLoad = async (event) => {
 				skillCategory: table.skill.category
 			})
 			.from(table.taskSkill)
-			.innerJoin(
-				table.skill,
-				eq(table.taskSkill.skillId, table.skill.id)
-			)
+			.innerJoin(table.skill, eq(table.taskSkill.skillId, table.skill.id))
 			.where(inArray(table.taskSkill.taskId, taskIds));
 	}
-	
+
 	// Organize task skills by task ID
-	const taskSkills: Record<string, { id: number, name: string, category: string | null }[]> = {};
-	
-	taskSkillsData.forEach(item => {
+	const taskSkills: Record<string, { id: number; name: string; category: string | null }[]> = {};
+
+	taskSkillsData.forEach((item) => {
 		if (!taskSkills[item.taskId]) {
 			taskSkills[item.taskId] = [];
 		}
-		
+
 		taskSkills[item.taskId].push({
 			id: item.skillId,
 			name: item.skillName,
@@ -209,10 +205,12 @@ export const actions: Actions = {
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
-			.where(and(
-				eq(table.userOrganization.userId, userId),
-				eq(table.userOrganization.organizationId, orgId)
-			));
+			.where(
+				and(
+					eq(table.userOrganization.userId, userId),
+					eq(table.userOrganization.organizationId, orgId)
+				)
+			);
 
 		if (!userMembership || userMembership.role !== 'admin') {
 			return fail(403, { error: 'Only admins can invite new members' });
@@ -239,10 +237,12 @@ export const actions: Actions = {
 		const [existingMembership] = await db
 			.select()
 			.from(table.userOrganization)
-			.where(and(
-				eq(table.userOrganization.userId, userToInvite.id),
-				eq(table.userOrganization.organizationId, orgId)
-			));
+			.where(
+				and(
+					eq(table.userOrganization.userId, userToInvite.id),
+					eq(table.userOrganization.organizationId, orgId)
+				)
+			);
 
 		if (existingMembership) {
 			return fail(400, { error: 'User is already a member of this organization' });
@@ -256,10 +256,12 @@ export const actions: Actions = {
 					status: table.organizationInvitation.status
 				})
 				.from(table.organizationInvitation)
-				.where(and(
-					eq(table.organizationInvitation.organizationId, orgId),
-					eq(table.organizationInvitation.inviteeId, userToInvite.id)
-				));
+				.where(
+					and(
+						eq(table.organizationInvitation.organizationId, orgId),
+						eq(table.organizationInvitation.inviteeId, userToInvite.id)
+					)
+				);
 
 			if (existingInvite) {
 				if (existingInvite.status === 'pending') {
@@ -306,10 +308,12 @@ export const actions: Actions = {
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
-			.where(and(
-				eq(table.userOrganization.userId, userId),
-				eq(table.userOrganization.organizationId, orgId)
-			));
+			.where(
+				and(
+					eq(table.userOrganization.userId, userId),
+					eq(table.userOrganization.organizationId, orgId)
+				)
+			);
 
 		if (!userMembership || userMembership.role !== 'admin') {
 			return fail(403, { error: 'Only admins can remove members' });
@@ -349,25 +353,26 @@ export const actions: Actions = {
 			if (orgTaskIds.length > 0) {
 				await db
 					.delete(table.taskAssignment)
-					.where(and(
-						eq(table.taskAssignment.userId, memberId),
-						inArray(table.taskAssignment.taskId, orgTaskIds)
-					));
+					.where(
+						and(
+							eq(table.taskAssignment.userId, memberId),
+							inArray(table.taskAssignment.taskId, orgTaskIds)
+						)
+					);
 				await db
 					.update(table.task)
 					.set({ assignedToId: null })
-					.where(and(
-						eq(table.task.assignedToId, memberId),
-						inArray(table.task.id, orgTaskIds)
-					));
+					.where(and(eq(table.task.assignedToId, memberId), inArray(table.task.id, orgTaskIds)));
 			}
 
 			await db
 				.delete(table.userOrganization)
-				.where(and(
-					eq(table.userOrganization.userId, memberId),
-					eq(table.userOrganization.organizationId, orgId)
-				));
+				.where(
+					and(
+						eq(table.userOrganization.userId, memberId),
+						eq(table.userOrganization.organizationId, orgId)
+					)
+				);
 
 			return { success: true };
 		} catch (error) {
@@ -410,25 +415,26 @@ export const actions: Actions = {
 			if (orgTaskIds.length > 0) {
 				await db
 					.delete(table.taskAssignment)
-					.where(and(
-						eq(table.taskAssignment.userId, userId),
-						inArray(table.taskAssignment.taskId, orgTaskIds)
-					));
+					.where(
+						and(
+							eq(table.taskAssignment.userId, userId),
+							inArray(table.taskAssignment.taskId, orgTaskIds)
+						)
+					);
 				await db
 					.update(table.task)
 					.set({ assignedToId: null })
-					.where(and(
-						eq(table.task.assignedToId, userId),
-						inArray(table.task.id, orgTaskIds)
-					));
+					.where(and(eq(table.task.assignedToId, userId), inArray(table.task.id, orgTaskIds)));
 			}
 
 			await db
 				.delete(table.userOrganization)
-				.where(and(
-					eq(table.userOrganization.userId, userId),
-					eq(table.userOrganization.organizationId, orgId)
-				));
+				.where(
+					and(
+						eq(table.userOrganization.userId, userId),
+						eq(table.userOrganization.organizationId, orgId)
+					)
+				);
 
 			// Redirect to organizations list after successful leave
 			throw redirect(302, '/dashboard/organizations');
@@ -457,10 +463,12 @@ export const actions: Actions = {
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
-			.where(and(
-				eq(table.userOrganization.userId, userId),
-				eq(table.userOrganization.organizationId, orgId)
-			));
+			.where(
+				and(
+					eq(table.userOrganization.userId, userId),
+					eq(table.userOrganization.organizationId, orgId)
+				)
+			);
 
 		if (!userMembership) {
 			return fail(403, { error: 'Only organization members can create tasks' });
@@ -471,12 +479,14 @@ export const actions: Actions = {
 		const description = formData.get('description')?.toString() || null;
 		const status = formData.get('status')?.toString() || 'backlog';
 		const priority = formData.get('priority')?.toString() || 'medium';
-		const assignedToIds = Array.from(new Set(
-			formData
-				.getAll('assignedToIds')
-				.map((value) => value?.toString())
-				.filter((value): value is string => Boolean(value))
-		));
+		const assignedToIds = Array.from(
+			new Set(
+				formData
+					.getAll('assignedToIds')
+					.map((value) => value?.toString())
+					.filter((value): value is string => Boolean(value))
+			)
+		);
 
 		if (!title) {
 			return fail(400, { error: 'Task title is required' });
@@ -487,10 +497,12 @@ export const actions: Actions = {
 			const [assignedUserMembership] = await db
 				.select()
 				.from(table.userOrganization)
-				.where(and(
-					eq(table.userOrganization.userId, assigneeId),
-					eq(table.userOrganization.organizationId, orgId)
-				));
+				.where(
+					and(
+						eq(table.userOrganization.userId, assigneeId),
+						eq(table.userOrganization.organizationId, orgId)
+					)
+				);
 
 			if (!assignedUserMembership) {
 				return fail(400, { error: 'Assigned user is not a member of this organization' });
@@ -499,25 +511,24 @@ export const actions: Actions = {
 
 		// Get any skill IDs from the form
 		const skillIds = Array.from(
-			new Set(
-				formData
-					.getAll('skillIds')
-					.map((value) => parseInt(value.toString()))
-			)
+			new Set(formData.getAll('skillIds').map((value) => parseInt(value.toString())))
 		).filter((id) => !Number.isNaN(id));
 
 		try {
 			// Insert the task and get its ID
-			const [newTask] = await db.insert(table.task).values({
-				title,
-				description,
-				status,
-				priority,
-				createdById: userId,
-				organizationId: orgId,
-				createdAt: new Date(),
-				assignedToId: assignedToIds[0] ?? null
-			}).returning({ id: table.task.id });
+			const [newTask] = await db
+				.insert(table.task)
+				.values({
+					title,
+					description,
+					status,
+					priority,
+					createdById: userId,
+					organizationId: orgId,
+					createdAt: new Date(),
+					assignedToId: assignedToIds[0] ?? null
+				})
+				.returning({ id: table.task.id });
 
 			// Attach assignees to the task
 			if (assignedToIds.length > 0) {
@@ -528,16 +539,16 @@ export const actions: Actions = {
 					}))
 				);
 			}
-			
+
 			// If there are skills selected, add them to the task_skill table
 			if (skillIds.length > 0) {
 				// Create entries for task_skill relation
-				const taskSkillValues = skillIds.map(skillId => ({
+				const taskSkillValues = skillIds.map((skillId) => ({
 					taskId: newTask.id,
 					skillId,
 					importance: 3 // Default medium importance
 				}));
-				
+
 				// Insert the task skills
 				await db.insert(table.taskSkill).values(taskSkillValues);
 			}
@@ -591,13 +602,9 @@ export const actions: Actions = {
 						.delete(table.taskAssignment)
 						.where(inArray(table.taskAssignment.taskId, taskIds));
 
-					await tx
-						.delete(table.taskSkill)
-						.where(inArray(table.taskSkill.taskId, taskIds));
+					await tx.delete(table.taskSkill).where(inArray(table.taskSkill.taskId, taskIds));
 
-					await tx
-						.delete(table.task)
-						.where(inArray(table.task.id, taskIds));
+					await tx.delete(table.task).where(inArray(table.task.id, taskIds));
 				}
 
 				await tx
@@ -608,9 +615,7 @@ export const actions: Actions = {
 					.delete(table.organizationInvitation)
 					.where(eq(table.organizationInvitation.organizationId, orgId));
 
-				await tx
-					.delete(table.organization)
-					.where(eq(table.organization.id, orgId));
+				await tx.delete(table.organization).where(eq(table.organization.id, orgId));
 			});
 
 			throw redirect(302, '/dashboard/organizations');
@@ -638,10 +643,12 @@ export const actions: Actions = {
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
-			.where(and(
-				eq(table.userOrganization.userId, userId),
-				eq(table.userOrganization.organizationId, orgId)
-			));
+			.where(
+				and(
+					eq(table.userOrganization.userId, userId),
+					eq(table.userOrganization.organizationId, orgId)
+				)
+			);
 
 		if (!userMembership) {
 			return fail(403, { error: 'Only organization members can update tasks' });
@@ -657,10 +664,7 @@ export const actions: Actions = {
 		const [task] = await db
 			.select()
 			.from(table.task)
-			.where(and(
-				eq(table.task.id, taskId),
-				eq(table.task.organizationId, orgId)
-			));
+			.where(and(eq(table.task.id, taskId), eq(table.task.organizationId, orgId)));
 
 		if (!task) {
 			return fail(404, { error: 'Task not found' });
@@ -675,21 +679,25 @@ export const actions: Actions = {
 			return fail(400, { error: 'Task title is required' });
 		}
 
-		const assignedToIds = Array.from(new Set(
-			formData
-				.getAll('assignedToIds')
-				.map((value) => value?.toString())
-				.filter((value): value is string => Boolean(value))
-		));
+		const assignedToIds = Array.from(
+			new Set(
+				formData
+					.getAll('assignedToIds')
+					.map((value) => value?.toString())
+					.filter((value): value is string => Boolean(value))
+			)
+		);
 
 		for (const assigneeId of assignedToIds) {
 			const [assigneeMembership] = await db
 				.select()
 				.from(table.userOrganization)
-				.where(and(
-					eq(table.userOrganization.userId, assigneeId),
-					eq(table.userOrganization.organizationId, orgId)
-				));
+				.where(
+					and(
+						eq(table.userOrganization.userId, assigneeId),
+						eq(table.userOrganization.organizationId, orgId)
+					)
+				);
 
 			if (!assigneeMembership) {
 				return fail(400, { error: 'Assigned user is not a member of this organization' });
@@ -718,35 +726,27 @@ export const actions: Actions = {
 					})
 					.where(eq(table.task.id, taskId));
 
-				await tx
-					.delete(table.taskAssignment)
-					.where(eq(table.taskAssignment.taskId, taskId));
+				await tx.delete(table.taskAssignment).where(eq(table.taskAssignment.taskId, taskId));
 
 				if (assignedToIds.length > 0) {
-					await tx
-						.insert(table.taskAssignment)
-						.values(
-							assignedToIds.map((assigneeId) => ({
-								taskId,
-								userId: assigneeId
-							}))
-						);
+					await tx.insert(table.taskAssignment).values(
+						assignedToIds.map((assigneeId) => ({
+							taskId,
+							userId: assigneeId
+						}))
+					);
 				}
 
-				await tx
-					.delete(table.taskSkill)
-					.where(eq(table.taskSkill.taskId, taskId));
+				await tx.delete(table.taskSkill).where(eq(table.taskSkill.taskId, taskId));
 
 				if (skillIds.length > 0) {
-					await tx
-						.insert(table.taskSkill)
-						.values(
-							skillIds.map((skillId) => ({
-								taskId,
-								skillId,
-								importance: 3
-							}))
-						);
+					await tx.insert(table.taskSkill).values(
+						skillIds.map((skillId) => ({
+							taskId,
+							skillId,
+							importance: 3
+						}))
+					);
 				}
 			});
 
@@ -773,10 +773,12 @@ export const actions: Actions = {
 		const [userMembership] = await db
 			.select()
 			.from(table.userOrganization)
-			.where(and(
-				eq(table.userOrganization.userId, userId),
-				eq(table.userOrganization.organizationId, orgId)
-			));
+			.where(
+				and(
+					eq(table.userOrganization.userId, userId),
+					eq(table.userOrganization.organizationId, orgId)
+				)
+			);
 
 		if (!userMembership) {
 			return fail(403, { error: 'Only organization members can update tasks' });
@@ -794,20 +796,14 @@ export const actions: Actions = {
 		const [task] = await db
 			.select()
 			.from(table.task)
-			.where(and(
-				eq(table.task.id, taskId),
-				eq(table.task.organizationId, orgId)
-			));
+			.where(and(eq(table.task.id, taskId), eq(table.task.organizationId, orgId)));
 
 		if (!task) {
 			return fail(404, { error: 'Task not found' });
 		}
 
 		try {
-			await db
-				.update(table.task)
-				.set({ status })
-				.where(eq(table.task.id, taskId));
+			await db.update(table.task).set({ status }).where(eq(table.task.id, taskId));
 
 			return { success: true };
 		} catch (error) {

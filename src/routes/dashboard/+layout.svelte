@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	
+
 	// Get user from the parent data
 	$: ({ user } = $page.data);
 
@@ -8,51 +8,69 @@
 	let profileButton: HTMLButtonElement | null = null;
 </script>
 
-<div class="min-h-screen bg-black text-white flex flex-col">
+<div class="flex min-h-screen flex-col bg-black text-white">
 	<!-- Navigation Bar -->
-	<nav class="bg-black border-b border-white p-4">
-		<div class="container mx-auto flex justify-between items-center">
+	<nav class="border-b border-white bg-black p-4">
+		<div class="container mx-auto flex items-center justify-between">
 			<div class="flex items-center space-x-6">
 				<a href="/dashboard" class="text-xl font-bold">Axon</a>
-				
-				<div class="hidden md:flex space-x-6">
-					<a 
-						href="/dashboard" 
-						class="hover:text-white/80 {$page.url.pathname === '/dashboard' ? 'border-b-2 border-white' : ''}"
+
+				<div class="hidden space-x-6 md:flex">
+					<a
+						href="/dashboard"
+						class="hover:text-white/80 {$page.url.pathname === '/dashboard'
+							? 'border-b-2 border-white'
+							: ''}"
 					>
 						Dashboard
 					</a>
-					<a 
-						href="/dashboard/organizations" 
-						class="hover:text-white/80 {$page.url.pathname.startsWith('/dashboard/organizations') ? 'border-b-2 border-white' : ''}"
+					<a
+						href="/dashboard/organizations"
+						class="hover:text-white/80 {$page.url.pathname.startsWith('/dashboard/organizations')
+							? 'border-b-2 border-white'
+							: ''}"
 					>
 						Organizations
 					</a>
 				</div>
 			</div>
-			
+
 			<div class="flex items-center">
-				<div class="relative" role="presentation" onmouseenter={() => dropdownOpen = true} onmouseleave={() => dropdownOpen = false}>
-					<button 
-						class="flex items-center space-x-1 text-white hover:text-white/80 border border-white p-2"
-						onfocus={() => dropdownOpen = true}
-						onblur={() => dropdownOpen = false}
+				<div
+					class="relative"
+					role="presentation"
+					onmouseenter={() => (dropdownOpen = true)}
+					onmouseleave={() => (dropdownOpen = false)}
+				>
+					<button
+						class="flex items-center space-x-1 border border-white p-2 text-white hover:text-white/80"
+						onfocus={() => (dropdownOpen = true)}
+						onblur={() => (dropdownOpen = false)}
 						bind:this={profileButton}
 					>
 						<span class="hidden md:inline">{user?.username || 'User'}</span>
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-							<path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-5 w-5"
+							viewBox="0 0 20 20"
+							fill="currentColor"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+								clip-rule="evenodd"
+							/>
 						</svg>
 					</button>
-					
+
 					<!-- Dropdown Menu -->
-					<div 
+					<div
 						role="menu"
 						tabindex="0"
-						class={`absolute right-0 z-50 w-48 bg-black border border-white shadow-lg ${dropdownOpen ? 'block' : 'hidden'} pt-2`}
+						class={`absolute right-0 z-50 w-48 border border-white bg-black shadow-lg ${dropdownOpen ? 'block' : 'hidden'} pt-2`}
 						style="top: 100%;"
-						onmouseenter={() => dropdownOpen = true}
-						onmouseleave={() => dropdownOpen = false}
+						onmouseenter={() => (dropdownOpen = true)}
+						onmouseleave={() => (dropdownOpen = false)}
 						onkeydown={(event) => {
 							if (event.key === 'Escape') dropdownOpen = false;
 						}}
@@ -65,7 +83,10 @@
 								Settings
 							</a>
 							<form method="post" action="/dashboard?/logout">
-								<button type="submit" class="w-full text-left px-4 py-2 hover:bg-white hover:text-black">
+								<button
+									type="submit"
+									class="w-full px-4 py-2 text-left hover:bg-white hover:text-black"
+								>
 									Sign out
 								</button>
 							</form>
@@ -75,19 +96,21 @@
 			</div>
 		</div>
 	</nav>
-	
+
 	<!-- Mobile Navigation (shows on small screens) -->
-	<div class="md:hidden border-b border-white">
+	<div class="border-b border-white md:hidden">
 		<div class="flex justify-around">
-			<a 
-				href="/dashboard" 
+			<a
+				href="/dashboard"
 				class="flex-1 py-2 text-center {$page.url.pathname === '/dashboard' ? 'bg-white/10' : ''}"
 			>
 				Dashboard
 			</a>
-			<a 
-				href="/dashboard/organizations" 
-				class="flex-1 py-2 text-center {$page.url.pathname.startsWith('/dashboard/organizations') ? 'bg-white/10' : ''}"
+			<a
+				href="/dashboard/organizations"
+				class="flex-1 py-2 text-center {$page.url.pathname.startsWith('/dashboard/organizations')
+					? 'bg-white/10'
+					: ''}"
 			>
 				Organizations
 			</a>

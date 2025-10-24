@@ -22,7 +22,9 @@ export const organization = pgTable('organization', {
 	name: text('name').notNull(),
 	description: text('description'),
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-	createdById: text('created_by_id').notNull().references(() => user.id)
+	createdById: text('created_by_id')
+		.notNull()
+		.references(() => user.id)
 });
 
 export const userOrganization = pgTable(
@@ -44,7 +46,7 @@ export const userOrganization = pgTable(
 // Import extended schema
 import {
 	task,
-	skill, 
+	skill,
 	userSkill,
 	taskSkill,
 	taskAssignment,
@@ -66,7 +68,7 @@ export type UserOrganization = typeof userOrganization.$inferSelect;
 // Export extended schema types and tables
 export {
 	task,
-	skill, 
+	skill,
 	userSkill,
 	taskSkill,
 	taskAssignment,
@@ -75,10 +77,4 @@ export {
 	userInterest
 };
 
-export type {
-	Task,
-	Skill,
-	TaskAssignment,
-	OrganizationInvitation,
-	Interest
-};
+export type { Task, Skill, TaskAssignment, OrganizationInvitation, Interest };

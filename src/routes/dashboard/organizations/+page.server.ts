@@ -10,9 +10,9 @@ export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) {
 		return redirect(302, '/login');
 	}
-	
+
 	const userId = event.locals.user.id;
-	
+
 	// Fetch organizations that the user is a member of
 	const userOrgs = await db
 		.select({
@@ -23,12 +23,9 @@ export const load: PageServerLoad = async (event) => {
 			role: table.userOrganization.role
 		})
 		.from(table.userOrganization)
-		.innerJoin(
-			table.organization,
-			eq(table.userOrganization.organizationId, table.organization.id)
-		)
+		.innerJoin(table.organization, eq(table.userOrganization.organizationId, table.organization.id))
 		.where(eq(table.userOrganization.userId, userId));
-	
+
 	const inviter = alias(table.user, 'inviter');
 
 	const pendingInvites = await db
@@ -40,7 +37,10 @@ export const load: PageServerLoad = async (event) => {
 			createdAt: table.organizationInvitation.createdAt
 		})
 		.from(table.organizationInvitation)
-		.innerJoin(table.organization, eq(table.organizationInvitation.organizationId, table.organization.id))
+		.innerJoin(
+			table.organization,
+			eq(table.organizationInvitation.organizationId, table.organization.id)
+		)
 		.innerJoin(inviter, eq(table.organizationInvitation.inviterId, inviter.id))
 		.where(
 			and(
@@ -61,21 +61,21 @@ export const actions: Actions = {
 		if (!event.locals.user) {
 			return fail(401, { message: 'Unauthorized' });
 		}
-		
+
 		const userId = event.locals.user.id;
 		const formData = await event.request.formData();
 		const name = formData.get('name')?.toString();
 		const description = formData.get('description')?.toString() || null;
-		
+
 		// Basic validation
 		if (!name) {
 			return fail(400, { message: 'Organization name is required' });
 		}
-		
+
 		if (name.length < 2 || name.length > 100) {
 			return fail(400, { message: 'Organization name must be between 2 and 100 characters' });
 		}
-		
+
 		try {
 			// Insert the organization
 			const [newOrg] = await db
@@ -86,14 +86,14 @@ export const actions: Actions = {
 					createdById: userId
 				})
 				.returning();
-			
+
 			// Add the creator as an admin
 			await db.insert(table.userOrganization).values({
 				userId,
 				organizationId: newOrg.id,
 				role: 'admin'
 			});
-			
+
 			return { success: true };
 		} catch (error) {
 			console.error('Error creating organization:', error);

@@ -38,24 +38,29 @@ Axon is a collaborative task management platform designed to help teams organize
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://gitlab.com/nunera/axon.git
    cd axon
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
 
 3. Set up environment variables:
    Copy the example file and adjust the values as needed:
+
    ```
    cp .env.example .env
    ```
+
    Ensure `DATABASE_URL` points to your local Postgres instance.
 
 4. Start the database with Docker Compose:
+
 ```bash
 docker compose up -v
 ```
@@ -67,11 +72,13 @@ docker compose down -d
 ```
 
 5. Run database migrations:
+
    ```bash
    npm run db:push
    ```
 
 6. Start the development server:
+
    ```bash
    npm run dev
    ```
@@ -94,7 +101,6 @@ docker compose up -d
     - `/components` - Reusable UI components
     - `/server` - Server-side code including auth and database
   - `/routes` - SvelteKit routes and pages
-  - `/stories` - Storybook component stories
 - `/drizzle` - Database migrations and schema
 - `/static` - Static assets
 
@@ -106,7 +112,6 @@ docker compose up -d
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Lint code
-- `npm run storybook` - Start Storybook for component development
 
 ### Database Management
 
@@ -140,4 +145,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Lucia Auth](https://lucia-auth.com/)
 - [TailwindCSS](https://tailwindcss.com/)
-- [Storybook](https://storybook.js.org/)

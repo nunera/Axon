@@ -97,8 +97,8 @@ export async function deleteUserAccount(userId: string) {
 				.where(eq(table.userOrganization.organizationId, org.id));
 
 			// Find another admin to transfer ownership, if any
-			const otherAdmin = members.find(m => m.userId !== userId && m.role === 'admin');
-			
+			const otherAdmin = members.find((m) => m.userId !== userId && m.role === 'admin');
+
 			if (otherAdmin) {
 				// Transfer ownership to another admin
 				await db
@@ -107,17 +107,19 @@ export async function deleteUserAccount(userId: string) {
 					.where(eq(table.organization.id, org.id));
 			} else if (members.length > 1) {
 				// No other admin but there are other members - promote the first non-creator member to admin and transfer ownership
-				const firstMember = members.find(m => m.userId !== userId);
+				const firstMember = members.find((m) => m.userId !== userId);
 				if (firstMember) {
 					// Update member role to admin
 					await db
 						.update(table.userOrganization)
 						.set({ role: 'admin' })
-						.where(and(
-							eq(table.userOrganization.userId, firstMember.userId),
-							eq(table.userOrganization.organizationId, org.id)
-						));
-					
+						.where(
+							and(
+								eq(table.userOrganization.userId, firstMember.userId),
+								eq(table.userOrganization.organizationId, org.id)
+							)
+						);
+
 					// Transfer ownership
 					await db
 						.update(table.organization)
@@ -126,29 +128,23 @@ export async function deleteUserAccount(userId: string) {
 				}
 			} else {
 				// This is the only member - delete the organization and its related data
-				
+
 				// Delete all tasks associated with this organization first
-				await db
-					.delete(table.task)
-					.where(eq(table.task.organizationId, org.id));
-				
+				await db.delete(table.task).where(eq(table.task.organizationId, org.id));
+
 				// Delete user memberships
 				await db
 					.delete(table.userOrganization)
 					.where(eq(table.userOrganization.organizationId, org.id));
-				
+
 				// Delete the organization
-				await db
-					.delete(table.organization)
-					.where(eq(table.organization.id, org.id));
+				await db.delete(table.organization).where(eq(table.organization.id, org.id));
 			}
 		}
 	}
-	
+
 	// Delete all associations with organizations
-	await db
-		.delete(table.userOrganization)
-		.where(eq(table.userOrganization.userId, userId));
+	await db.delete(table.userOrganization).where(eq(table.userOrganization.userId, userId));
 
 	// Remove any outstanding invitations involving this user
 	await db
@@ -161,36 +157,26 @@ export async function deleteUserAccount(userId: string) {
 		);
 
 	// Remove any task assignments for this user
-	await db
-		.delete(table.taskAssignment)
-		.where(eq(table.taskAssignment.userId, userId));
+	await db.delete(table.taskAssignment).where(eq(table.taskAssignment.userId, userId));
 
 	// Delete all tasks assigned to this user
 	await db
 		.update(table.task)
 		.set({ assignedToId: null })
 		.where(eq(table.task.assignedToId, userId));
-	
+
 	// Delete all tasks created by this user (optional - might want to keep them)
 	// await db.delete(table.task).where(eq(table.task.createdById, userId));
-	
+
 	// Delete user interests
-	await db
-		.delete(table.userInterest)
-		.where(eq(table.userInterest.userId, userId));
-	
+	await db.delete(table.userInterest).where(eq(table.userInterest.userId, userId));
+
 	// Delete user skills
-	await db
-		.delete(table.userSkill)
-		.where(eq(table.userSkill.userId, userId));
-	
+	await db.delete(table.userSkill).where(eq(table.userSkill.userId, userId));
+
 	// Delete all user sessions
-	await db
-		.delete(table.session)
-		.where(eq(table.session.userId, userId));
-	
+	await db.delete(table.session).where(eq(table.session.userId, userId));
+
 	// Finally, delete the user
-	await db
-		.delete(table.user)
-		.where(eq(table.user.id, userId));
+	await db.delete(table.user).where(eq(table.user.id, userId));
 }
