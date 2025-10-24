@@ -32,7 +32,7 @@ Axon is a collaborative task management platform designed to help teams organize
 ### Prerequisites
 
 - Node.js (v18+)
-- Docker and Docker Compose (v2.0+)
+- Docker (with the Compose plugin)
 - PostgreSQL database
 
 ### Installation
@@ -56,9 +56,15 @@ Axon is a collaborative task management platform designed to help teams organize
    Ensure `DATABASE_URL` points to your local Postgres instance.
 
 4. Start the database with Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
+```bash
+docker compose up -v
+```
+
+To stop the stack:
+
+```bash
+docker compose down -d
+```
 
 5. Run database migrations:
    ```bash
@@ -77,7 +83,7 @@ Axon is a collaborative task management platform designed to help teams organize
 To run the entire application with Docker:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Project Structure
