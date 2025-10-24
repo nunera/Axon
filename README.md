@@ -32,7 +32,7 @@ Axon is a collaborative task management platform designed to help teams organize
 ### Prerequisites
 
 - Node.js (v18+)
-- Docker and Docker Compose
+- Docker and Docker Compose (v2.0+)
 - PostgreSQL database
 
 ### Installation
@@ -49,19 +49,20 @@ Axon is a collaborative task management platform designed to help teams organize
    ```
 
 3. Set up environment variables:
-   Create a `.env` file in the root directory with the following variables:
+   Copy the example file and adjust the values as needed:
    ```
-   DATABASE_URL="postgresql://username:password@localhost:5432/axon"
+   cp .env.example .env
    ```
+   Ensure `DATABASE_URL` points to your local Postgres instance.
 
-4. Start the database with Docker:
+4. Start the database with Docker Compose:
    ```bash
    docker-compose up -d
    ```
 
 5. Run database migrations:
    ```bash
-   npx drizzle-kit push
+   npm run db:push
    ```
 
 6. Start the development server:
@@ -103,17 +104,19 @@ docker-compose up -d
 
 ### Database Management
 
-Use Drizzle ORM for database management:
+Use the provided npm scripts when working with the schema:
 
 ```bash
-# Generate new migrations
-npx drizzle-kit generate
+# Apply the latest migrations (run manually whenever the schema changes)
+npm run db:push
 
-# Apply migrations
-npx drizzle-kit push
+# Open Drizzle Studio to inspect tables and data
+npm run db:studio
 ```
 
 ## Contributing
+
+Before starting, read the contributor guide in [`AGENTS.md`](AGENTS.md) for repo-specific workflow and quality expectations.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature-name`

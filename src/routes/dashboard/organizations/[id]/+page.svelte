@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import type { PageServerData } from './$types';
 	import { fly, fade } from 'svelte/transition';
 	import SphereVisualization from '$lib/components/SphereVisualization.svelte';
@@ -8,17 +9,18 @@
 		type Skill = { id: number; name: string; category?: string | null; proficiency?: number };
 
 	// Extend PageServerData locally to include the optional skills property
-	type ExtendedPageData = PageServerData & { 
+	type ExtendedPageData = PageServerData & {
 		skills?: Skill[];
-		taskSkills?: { [taskId: number]: Skill[] }; // Add taskSkills definition
-		userSkills?: { [userId: string]: Skill[] }; // Add userSkills definition
+		taskSkills?: { [taskId: number]: Skill[] };
+		userSkills?: { [userId: string]: Skill[] };
+		pendingInvites?: { id: number; inviteeUsername: string; invitedAt: Date; status?: string }[];
 	};
 
 	let { data }: { data: ExtendedPageData } = $props();
-	
+
 	// Active tab state
 	let activeTab = $state('about');
-	
+
 	// State for member invitation modal
 	let showInviteModal = $state(false);
 	let inviteUsername = $state('');
@@ -27,21 +29,62 @@
 	
 	// State for leave organization confirmation modal
 	let showLeaveConfirmation = $state(false);
-	
+	let showDeleteOrganizationModal = $state(false);
+
 	// State for create task modal
 	let showCreateTaskModal = $state(false);
 	let taskTitle = $state('');
 	let taskDescription = $state('');
 	let taskStatus = $state('backlog');
 	let taskPriority = $state('medium');
-	let assignedUserId = $state('');
-	// State for task skills
+	let assignedUserIds = $state<string[]>([]);
 	let selectedSkillIds = $state<number[]>([]);
 	let skillSearchTerm = $state('');
-	let availableSkills: Skill[] = [];
-	let filteredSkills = $state<Skill[]>([]);
 
-	// Toggle modals
+	let availableSkills: Skill[] = [...(data.skills ?? [])];
+	let filteredSkills = $state<Skill[]>([...availableSkills]);
+
+	// Edit task modal state
+	let showEditTaskModal = $state(false);
+	let editingTaskId = $state<number | null>(null);
+	let editTaskTitle = $state('');
+	let editTaskDescription = $state('');
+	let editTaskStatus = $state('backlog');
+	let editTaskPriority = $state('medium');
+let editAssignedUserIds = $state<string[]>([]);
+let editSkillIds = $state<number[]>([]);
+let editSkillSearchTerm = $state('');
+let editFilteredSkills = $state<Skill[]>([...availableSkills]);
+let taskEditError = $state('');
+
+	// Drag state
+	let draggedTask: any = null;
+	let draggedColumn: string = '';
+let dragOverColumn: string = '';
+let isDragging = $state(false);
+
+$effect(() => {
+	availableSkills = [...(data.skills ?? [])];
+	if (!showCreateTaskModal) {
+		filteredSkills = [...availableSkills];
+	}
+	if (!showEditTaskModal) {
+		editFilteredSkills = [...availableSkills];
+	}
+});
+
+const createSelectedSkills = $derived(
+	selectedSkillIds
+		.map((id) => availableSkills.find((skill) => skill.id === id))
+		.filter((skill): skill is Skill => Boolean(skill))
+);
+
+const editSelectedSkills = $derived(
+	editSkillIds
+		.map((id) => availableSkills.find((skill) => skill.id === id))
+		.filter((skill): skill is Skill => Boolean(skill))
+);
+
 	function toggleInviteModal() {
 		showInviteModal = !showInviteModal;
 		if (showInviteModal) {
@@ -50,52 +93,101 @@
 			inviteError = '';
 		}
 	}
-	
+
 	function toggleLeaveConfirmation() {
 		showLeaveConfirmation = !showLeaveConfirmation;
 	}
-	
+
+	function closeInviteModal() {
+		showInviteModal = false;
+	}
+
+	function closeLeaveConfirmation() {
+		showLeaveConfirmation = false;
+	}
+
+	function openDeleteOrganizationModal() {
+		showDeleteOrganizationModal = true;
+	}
+
+	function closeDeleteOrganizationModal() {
+		showDeleteOrganizationModal = false;
+	}
+
+	const enhanceLeaveOrganization = () => {
+		return async ({ result }: { result: any }) => {
+			if (result.type === 'redirect') {
+				closeLeaveConfirmation();
+				await goto(result.location);
+			}
+		};
+	};
+
+	const handleOverlayKeyDown = (event: KeyboardEvent, close: () => void) => {
+		if (event.key === 'Escape') {
+			close();
+		}
+	};
+
+	function resetCreateTaskForm() {
+		taskTitle = '';
+		taskDescription = '';
+		taskStatus = 'backlog';
+		taskPriority = 'medium';
+		assignedUserIds = [];
+		selectedSkillIds = [];
+		skillSearchTerm = '';
+		filteredSkills = [...availableSkills];
+	}
+
 	function toggleCreateTaskModal() {
 		showCreateTaskModal = !showCreateTaskModal;
 		if (showCreateTaskModal) {
-			// Reset form fields
-			// Reset form fields
-			taskTitle = '';
-			taskDescription = '';
-			taskStatus = 'backlog';
-			taskPriority = 'medium';
-			assignedUserId = '';
-			selectedSkillIds = [];
-			skillSearchTerm = ''; // Also reset skill search term
-			
-			// Load available skills from the data, providing an empty array if skills are undefined
-				availableSkills = [...(data.skills ?? [])];
-				filteredSkills = [...(data.skills ?? [])];
-			}
+			resetCreateTaskForm();
 		}
-	
-	// Skills filtering
+	}
+
+	function closeCreateTaskModal() {
+		showCreateTaskModal = false;
+		resetCreateTaskForm();
+	}
+
 	function filterSkills() {
 		if (!skillSearchTerm) {
 			filteredSkills = [...availableSkills];
 			return;
 		}
-		
-		filteredSkills = availableSkills.filter(skill => 
+		filteredSkills = availableSkills.filter((skill) =>
 			skill.name.toLowerCase().includes(skillSearchTerm.toLowerCase())
 		);
 	}
-	
-	// Toggle skill selection
+
 	function toggleSkillSelection(skillId: number) {
 		if (selectedSkillIds.includes(skillId)) {
-			selectedSkillIds = selectedSkillIds.filter(id => id !== skillId);
+			selectedSkillIds = selectedSkillIds.filter((id) => id !== skillId);
 		} else {
 			selectedSkillIds = [...selectedSkillIds, skillId];
 		}
 	}
-	
-	// Format date
+
+	function filterEditSkills() {
+		if (!editSkillSearchTerm) {
+			editFilteredSkills = [...availableSkills];
+			return;
+		}
+		editFilteredSkills = availableSkills.filter((skill) =>
+			skill.name.toLowerCase().includes(editSkillSearchTerm.toLowerCase())
+		);
+	}
+
+	function toggleEditSkillSelection(skillId: number) {
+		if (editSkillIds.includes(skillId)) {
+			editSkillIds = editSkillIds.filter((id) => id !== skillId);
+		} else {
+			editSkillIds = [...editSkillIds, skillId];
+		}
+	}
+
 	function formatDate(date: string | Date) {
 		return new Date(date).toLocaleDateString('en-US', {
 			year: 'numeric',
@@ -103,51 +195,100 @@
 			day: 'numeric'
 		});
 	}
-	
-	// State for drag and drop
-	let draggedTask: any = null;
-	let draggedColumn: string = '';
-	let dragOverColumn: string = '';
-	
-	// Handle drag start
+
 	function handleDragStart(task: any, column: string) {
 		draggedTask = task;
 		draggedColumn = column;
+		isDragging = true;
 	}
-	
-	// Handle drag over
+
 	function handleDragOver(event: DragEvent, column: string) {
 		event.preventDefault();
 		dragOverColumn = column;
 	}
-	
-	// Handle drop
+
+	function handleDragEnd() {
+		isDragging = false;
+		draggedTask = null;
+		draggedColumn = '';
+		dragOverColumn = '';
+	}
+
 	function handleDrop(event: DragEvent, column: string) {
 		event.preventDefault();
-		
 		if (draggedTask && draggedColumn !== column) {
-			// Submit form to update task status
 			const form = document.getElementById('updateTaskForm') as HTMLFormElement;
 			const taskIdInput = document.getElementById('updateTaskId') as HTMLInputElement;
 			const statusInput = document.getElementById('updateTaskStatus') as HTMLInputElement;
-			
+
 			taskIdInput.value = draggedTask.id.toString();
 			statusInput.value = column;
-			
+
 			form.requestSubmit();
 		}
+		handleDragEnd();
 	}
-	
+
+	function openEditTaskModal(task: any, event?: MouseEvent) {
+		event?.stopPropagation();
+		if (isDragging) {
+			return;
+		}
+
+		editingTaskId = task.id;
+		editTaskTitle = task.title;
+		editTaskDescription = task.description ?? '';
+		editTaskStatus = task.status ?? 'backlog';
+		editTaskPriority = task.priority ?? 'medium';
+		editAssignedUserIds = task.assignees
+			? task.assignees.map((assignee: { userId: string }) => assignee.userId)
+			: task.assignedToId
+				? [task.assignedToId]
+				: [];
+		editSkillIds = (data.taskSkills?.[task.id] ?? []).map((skill) => skill.id);
+		editSkillSearchTerm = '';
+		editFilteredSkills = [...availableSkills];
+		taskEditError = '';
+		showEditTaskModal = true;
+	}
+
+	function closeEditTaskModal() {
+		showEditTaskModal = false;
+		taskEditError = '';
+		editingTaskId = null;
+	}
+
+	const enhanceUpdateTask = () => {
+		return async ({ result, update }: { result: any; update: () => Promise<void> }) => {
+			if (result.type === 'success') {
+				taskEditError = '';
+				await update();
+				closeEditTaskModal();
+			} else if (result.type === 'failure') {
+				taskEditError = typeof result.data?.error === 'string' ? result.data.error : 'Failed to update task';
+			}
+		};
+	};
+
+	const enhanceDeleteOrganization = () => {
+		return async ({ result }: { result: any }) => {
+			if (result.type === 'redirect') {
+				closeDeleteOrganizationModal();
+				await goto(result.location);
+			}
+		};
+	};
+
 	// Get task suggestion based on current tasks
 	function getTaskSuggestion() {
 		const suggestions = [
-			"Consider breaking down larger tasks into smaller ones for better tracking",
-			"Tasks with no recent activity might need attention",
-			"Balancing task distribution among team members improves efficiency",
-			"Regular updates help keep everyone informed of progress",
-			"Adding skills to tasks helps match the right people to the right work"
+			'Consider breaking down larger tasks into smaller ones for better tracking',
+			'Tasks with no recent activity might need attention',
+			'Balancing task distribution among team members improves efficiency',
+			'Regular updates help keep everyone informed of progress',
+			'Adding skills to tasks helps match the right people to the right work'
 		];
-		
+
 		return suggestions[Math.floor(Math.random() * suggestions.length)];
 	}
 </script>
@@ -161,13 +302,22 @@
 				<p class="text-gray-400">Created {formatDate(data.organization.createdAt)}</p>
 			</div>
 			
-			<div class="mt-4 md:mt-0 flex space-x-3">
+			<div class="mt-4 md:mt-0 flex flex-wrap gap-3 justify-end">
 				{#if data.userRole === 'admin'}
 					<button
 						onclick={toggleInviteModal}
 						class="border-2 border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black transition-colors duration-200"
 					>
 						Invite Member
+					</button>
+				{/if}
+
+				{#if data.organization.createdById === data.userId}
+					<button
+						onclick={openDeleteOrganizationModal}
+						class="border-2 border-red-500 bg-black px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500 hover:text-white transition-colors duration-200"
+					>
+						Delete Organization
 					</button>
 				{/if}
 				
@@ -256,6 +406,20 @@
 						</div>
 					{/each}
 				</div>
+
+				{#if data.userRole === 'admin' && data.pendingInvites && data.pendingInvites.length > 0}
+					<div class="mt-6 border border-white/30 bg-black/40 p-4">
+						<h3 class="text-lg font-medium mb-3">Pending Invitations</h3>
+						<ul class="space-y-2 text-sm text-gray-300">
+							{#each data.pendingInvites as invite}
+								<li class="flex justify-between">
+									<span>@{invite.inviteeUsername}</span>
+									<span class="text-gray-400">Sent {formatDate(invite.invitedAt)}</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 			</div>
 		{/if}
 		
@@ -307,24 +471,30 @@
 						{#if data.tasks?.backlog && data.tasks.backlog.length > 0}
 							<div class="space-y-3">
 								{#each data.tasks.backlog as task}
-									<div 
-										class="bg-black border border-white p-3 cursor-move"
+									<button 
+										type="button"
+										class="w-full text-left bg-black border border-white p-3 cursor-move"
 										draggable="true"
 										ondragstart={() => handleDragStart(task, 'backlog')}
-										role="listitem"
+										ondragend={handleDragEnd}
+										onclick={(event) => openEditTaskModal(task, event)}
 									>
 										<h3 class="font-medium">{task.title}</h3>
 										{#if task.description}
 											<p class="text-sm text-gray-400 mt-1">{task.description}</p>
 										{/if}
-										<div class="flex items-center justify-between mt-3">
-											<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize">{task.priority}</span>
-											{#if task.assignedToUsername}
-												<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">
-													@{task.assignedToUsername}
-												</span>
-											{/if}
-										</div>
+										<div class="flex items-center justify-between mt-3 gap-2">
+										<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize whitespace-nowrap">{task.priority}</span>
+										{#if task.assignees?.length}
+											<div class="flex flex-wrap justify-end gap-1">
+												{#each task.assignees as assignee}
+													<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500 whitespace-nowrap">
+														@{assignee.username}
+													</span>
+												{/each}
+											</div>
+										{/if}
+									</div>
 										
 										<!-- Show task skills -->
 										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
@@ -336,7 +506,7 @@
 												{/each}
 											</div>
 										{/if}
-									</div>
+									</button>
 								{/each}
 							</div>
 						{:else}
@@ -361,24 +531,30 @@
 						{#if data.tasks?.todo && data.tasks.todo.length > 0}
 							<div class="space-y-3">
 								{#each data.tasks.todo as task}
-									<div 
-										class="bg-black border border-white p-3 cursor-move"
+									<button 
+										type="button"
+										class="w-full text-left bg-black border border-white p-3 cursor-move"
 										draggable="true"
 										ondragstart={() => handleDragStart(task, 'todo')}
-										role="listitem"
+										ondragend={handleDragEnd}
+										onclick={(event) => openEditTaskModal(task, event)}
 									>
 										<h3 class="font-medium">{task.title}</h3>
 										{#if task.description}
 											<p class="text-sm text-gray-400 mt-1">{task.description}</p>
 										{/if}
-										<div class="flex items-center justify-between mt-3">
-											<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize">{task.priority}</span>
-											{#if task.assignedToUsername}
-												<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">
-													@{task.assignedToUsername}
-												</span>
-											{/if}
-										</div>
+									<div class="flex items-center justify-between mt-3 gap-2">
+										<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize whitespace-nowrap">{task.priority}</span>
+										{#if task.assignees?.length}
+											<div class="flex flex-wrap justify-end gap-1">
+												{#each task.assignees as assignee}
+													<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500 whitespace-nowrap">
+														@{assignee.username}
+													</span>
+												{/each}
+											</div>
+										{/if}
+									</div>
 										
 										<!-- Show task skills -->
 										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
@@ -390,7 +566,7 @@
 												{/each}
 											</div>
 										{/if}
-									</div>
+									</button>
 								{/each}
 							</div>
 						{:else}
@@ -415,24 +591,30 @@
 						{#if data.tasks?.['in-progress'] && data.tasks['in-progress'].length > 0}
 							<div class="space-y-3">
 								{#each data.tasks['in-progress'] as task}
-									<div 
-										class="bg-black border border-white p-3 cursor-move"
+									<button 
+										type="button"
+										class="w-full text-left bg-black border border-white p-3 cursor-move"
 										draggable="true"
 										ondragstart={() => handleDragStart(task, 'in-progress')}
-										role="listitem"
+										ondragend={handleDragEnd}
+										onclick={(event) => openEditTaskModal(task, event)}
 									>
 										<h3 class="font-medium">{task.title}</h3>
 										{#if task.description}
 											<p class="text-sm text-gray-400 mt-1">{task.description}</p>
 										{/if}
-										<div class="flex items-center justify-between mt-3">
-											<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize">{task.priority}</span>
-											{#if task.assignedToUsername}
-												<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">
-													@{task.assignedToUsername}
-												</span>
-											{/if}
-										</div>
+									<div class="flex items-center justify-between mt-3 gap-2">
+										<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize whitespace-nowrap">{task.priority}</span>
+										{#if task.assignees?.length}
+											<div class="flex flex-wrap justify-end gap-1">
+												{#each task.assignees as assignee}
+													<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500 whitespace-nowrap">
+														@{assignee.username}
+													</span>
+												{/each}
+											</div>
+										{/if}
+									</div>
 										
 										<!-- Show task skills -->
 										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
@@ -444,7 +626,7 @@
 												{/each}
 											</div>
 										{/if}
-									</div>
+									</button>
 								{/each}
 							</div>
 						{:else}
@@ -469,24 +651,30 @@
 						{#if data.tasks?.done && data.tasks.done.length > 0}
 							<div class="space-y-3">
 								{#each data.tasks.done as task}
-									<div 
-										class="bg-black border border-white p-3 cursor-move"
+									<button 
+										type="button"
+										class="w-full text-left bg-black border border-white p-3 cursor-move"
 										draggable="true"
 										ondragstart={() => handleDragStart(task, 'done')}
-										role="listitem"
+										ondragend={handleDragEnd}
+										onclick={(event) => openEditTaskModal(task, event)}
 									>
 										<h3 class="font-medium">{task.title}</h3>
 										{#if task.description}
 											<p class="text-sm text-gray-400 mt-1">{task.description}</p>
 										{/if}
-										<div class="flex items-center justify-between mt-3">
-											<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize">{task.priority}</span>
-											{#if task.assignedToUsername}
-												<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">
-													@{task.assignedToUsername}
-												</span>
-											{/if}
-										</div>
+									<div class="flex items-center justify-between mt-3 gap-2">
+										<span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize whitespace-nowrap">{task.priority}</span>
+										{#if task.assignees?.length}
+											<div class="flex flex-wrap justify-end gap-1">
+												{#each task.assignees as assignee}
+													<span class="text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500 whitespace-nowrap">
+														@{assignee.username}
+													</span>
+												{/each}
+											</div>
+										{/if}
+									</div>
 										
 										<!-- Show task skills -->
 										{#if data.taskSkills && data.taskSkills[task.id] && data.taskSkills[task.id].length > 0}
@@ -498,7 +686,7 @@
 												{/each}
 											</div>
 										{/if}
-									</div>
+									</button>
 								{/each}
 							</div>
 						{:else}
@@ -562,56 +750,75 @@
 
 <!-- Invite Member Modal -->
 {#if showInviteModal}
-	<div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-		<div class="bg-black p-8 shadow-xl border-2 border-white max-w-md w-full">
-			<h2 class="text-xl font-bold text-white mb-4">Invite Member</h2>
-			
-			{#if inviteMessage}
-				<div class="mb-4 p-3 bg-green-900/50 border border-green-600 text-green-100">
-					{inviteMessage}
+	<div
+		role="button"
+		tabindex="0"
+		class="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) closeInviteModal();
+		}}
+		onkeydown={(event) => handleOverlayKeyDown(event, closeInviteModal)}
+	>
+		<div
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			class="bg-black border-2 border-white shadow-xl.max-w-md w-full max-h-[85vh] flex flex-col"
+			onkeydown={(event) => event.stopPropagation()}
+		>
+			<form
+				method="post"
+				action="?/inviteMember"
+				use:enhance={({ formData, cancel }) => {
+					return async ({ result, update }) => {
+						if (result.type === 'success') {
+							inviteMessage = `${formData.get('username')} has been invited successfully!`;
+							inviteError = '';
+							inviteUsername = '';
+							await update();
+						} else if (result.type === 'failure') {
+							inviteError = typeof result.data?.error === 'string' ? result.data.error : 'Failed to invite user';
+							inviteMessage = '';
+						}
+					};
+				}}
+				class="flex flex-col h-full overflow-hidden"
+			>
+				<header class="px-8 pt-8">
+					<h2 class="text-xl font-bold text-white">Invite Member</h2>
+				</header>
+
+				<div class="flex-1 overflow-y-auto px-8 pb-4 space-y-4">
+					{#if inviteMessage}
+						<div class="p-3 bg-green-900/50 border border-green-600 text-green-100 text-sm">
+							{inviteMessage}
+						</div>
+					{/if}
+
+					{#if inviteError}
+						<div class="p-3 bg-red-900/50 border border-red-600 text-red-100 text-sm">
+							{inviteError}
+						</div>
+					{/if}
+
+					<div>
+						<label for="username" class="block text-sm font-medium text-white mb-1">Username</label>
+						<input
+							id="username"
+							name="username"
+							type="text"
+							bind:value={inviteUsername}
+							required
+							class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
+							placeholder="Enter username to invite"
+						/>
+					</div>
 				</div>
-			{/if}
-			
-			{#if inviteError}
-				<div class="mb-4 p-3 bg-red-900/50 border border-red-600 text-red-100">
-					{inviteError}
-				</div>
-			{/if}
-			
-			<form method="post" action="?/inviteMember" use:enhance={({ formData, cancel }) => {
-				return async ({ result, update }) => {
-					if (result.type === 'success') {
-						inviteMessage = `${formData.get('username')} has been invited successfully!`;
-						inviteError = '';
-						
-						// Clear the username field
-						inviteUsername = '';
-						
-						// Update the page to reflect the server response
-						await update();
-					} else if (result.type === 'failure') {
-						inviteError = typeof result.data?.error === 'string' ? result.data.error : 'Failed to invite user';
-						inviteMessage = '';
-					}
-				};
-			}}>
-				<div class="mb-4">
-					<label for="username" class="block text-sm font-medium text-white mb-1">Username</label>
-					<input
-						id="username"
-						name="username"
-						type="text"
-						bind:value={inviteUsername}
-						required
-						class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
-						placeholder="Enter username to invite"
-					/>
-				</div>
-				
-				<div class="flex space-x-4 mt-6">
+
+				<footer class="px-8 pb-8 pt-4 border-t border-white/30 flex gap-4">
 					<button 
 						type="button"
-						onclick={toggleInviteModal}
+						onclick={closeInviteModal}
 						class="flex-1 px-4 py-2 bg-black text-white border-2 border-white hover:bg-white/10 transition-colors duration-200"
 					>
 						Cancel
@@ -622,7 +829,7 @@
 					>
 						Invite
 					</button>
-				</div>
+				</footer>
 			</form>
 		</div>
 	</div>
@@ -630,21 +837,41 @@
 
 <!-- Leave Organization Confirmation Modal -->
 {#if showLeaveConfirmation}
-	<div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-		<div class="bg-black p-8 shadow-xl border-2 border-white max-w-md w-full">
-			<h2 class="text-xl font-bold text-white mb-4">Leave Organization</h2>
-			<p class="text-white mb-6">
-				Are you sure you want to leave this organization? You will lose access to all its resources.
-			</p>
-			
-			<div class="flex space-x-4">
+	<div
+		role="button"
+		tabindex="0"
+		class="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) closeLeaveConfirmation();
+		}}
+		onkeydown={(event) => handleOverlayKeyDown(event, closeLeaveConfirmation)}
+	>
+		<div
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			class="bg-black border-2 border-white shadow-xl max-w-md w-full max-h-[85vh] flex flex-col"
+			onkeydown={(event) => event.stopPropagation()}
+		>
+			<header class="px-8 pt-8">
+				<h2 class="text-xl font-bold text-white">Leave Organization</h2>
+			</header>
+
+			<div class="flex-1 overflow-y-auto px-8 pb-4">
+				<p class="text-white">
+					Are you sure you want to leave this organization? You will lose access to all its resources.
+				</p>
+			</div>
+
+			<footer class="px-8 pb-8 pt-4 border-t border-white/30 flex gap-4">
 				<button 
-					onclick={toggleLeaveConfirmation}
+					type="button"
+					onclick={closeLeaveConfirmation}
 					class="flex-1 px-4 py-2 bg-black text-white border-2 border-white hover:bg-white/10 transition-colors duration-200"
 				>
 					Cancel
 				</button>
-				<form method="post" action="?/leaveOrganization" use:enhance class="flex-1">
+				<form method="post" action="?/leaveOrganization" use:enhance={enhanceLeaveOrganization} class="flex-1">
 					<button 
 						type="submit"
 						class="w-full px-4 py-2 bg-red-500 text-white border-2 border-red-500 hover:bg-red-600 transition-colors duration-200"
@@ -652,160 +879,230 @@
 						Leave
 					</button>
 				</form>
+			</footer>
+		</div>
+	</div>
+{/if}
+
+<!-- Delete Organization Modal -->
+{#if showDeleteOrganizationModal}
+	<div
+		role="button"
+		tabindex="0"
+		class="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) closeDeleteOrganizationModal();
+		}}
+		onkeydown={(event) => handleOverlayKeyDown(event, closeDeleteOrganizationModal)}
+	>
+		<div
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			class="bg-black border-2 border-white shadow-xl max-w-md w-full max-h-[85vh] flex flex-col"
+			onkeydown={(event) => event.stopPropagation()}
+		>
+			<header class="px-8 pt-8">
+				<h2 class="text-xl font-bold text-white">Delete Organization</h2>
+			</header>
+
+			<div class="flex-1 overflow-y-auto px-8 pb-4 space-y-4">
+				<p class="text-white">
+					This action will permanently remove <span class="font-semibold">{data.organization.name}</span>, including all tasks and memberships.
+				</p>
+				<p class="text-sm text-red-300">This cannot be undone.</p>
 			</div>
+
+			<footer class="px-8 pb-8 pt-4 border-t border-white/30 flex gap-4">
+				<button 
+					type="button"
+					onclick={closeDeleteOrganizationModal}
+					class="flex-1 px-4 py-2 bg-black text-white border-2 border-white hover:bg-white/10 transition-colors duration-200"
+				>
+					Cancel
+				</button>
+				<form method="post" action="?/deleteOrganization" use:enhance={enhanceDeleteOrganization} class="flex-1">
+					<button 
+						type="submit"
+						class="w-full px-4 py-2 bg-red-600 text-white border-2 border-red-600 hover:bg-red-700 transition-colors duration-200"
+					>
+						Delete Organization
+					</button>
+				</form>
+			</footer>
 		</div>
 	</div>
 {/if}
 
 <!-- Create Task Modal -->
 {#if showCreateTaskModal}
-	<div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-		<div class="bg-black p-8 shadow-xl border-2 border-white max-w-md w-full">
-			<h2 class="text-xl font-bold text-white mb-4">Create New Task</h2>
-			
-			<form method="post" action="?/createTask" use:enhance>
-				<div class="mb-4">
-					<label for="title" class="block text-sm font-medium text-white mb-1">Task Title</label>
-					<input
-						id="title"
-						name="title"
-						type="text"
-						bind:value={taskTitle}
-						required
-						class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
-						placeholder="Enter task title"
-					/>
-				</div>
-				
-				<div class="mb-4">
-					<label for="description" class="block text-sm font-medium text-white mb-1">Description (optional)</label>
-					<textarea
-						id="description"
-						name="description"
-						bind:value={taskDescription}
-						rows="3"
-						class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
-						placeholder="Describe the task"
-					></textarea>
-				</div>
-				
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-					<div>
-						<label for="status" class="block text-sm font-medium text-white mb-1">Status</label>
-						<select
-							id="status"
-							name="status"
-							bind:value={taskStatus}
-							class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
-						>
-							<option value="backlog">Backlog</option>
-							<option value="todo">To Do</option>
-							<option value="in-progress">In Progress</option>
-							<option value="done">Done</option>
-						</select>
-					</div>
-					
-					<div>
-						<label for="priority" class="block text-sm font-medium text-white mb-1">Priority</label>
-						<select
-							id="priority"
-							name="priority"
-							bind:value={taskPriority}
-							class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
-						>
-							<option value="low">Low</option>
-							<option value="medium">Medium</option>
-							<option value="high">High</option>
-						</select>
-					</div>
-				</div>
-				
-				 <!-- Assignee dropdown -->
-				<div class="mb-4">
-					<label for="assignedToId" class="block text-sm font-medium text-white mb-1">Assign To (optional)</label>
-					<select
-						id="assignedToId"
-						name="assignedToId"
-						bind:value={assignedUserId}
-						class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
-					>
-						<option value="">Unassigned</option>
-						{#each data.members as member}
-							<option value={member.userId}>{member.username}</option>
-						{/each}
-					</select>
-				</div>
+	<div
+		role="button"
+		tabindex="0"
+		class="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) closeCreateTaskModal();
+		}}
+		onkeydown={(event) => handleOverlayKeyDown(event, closeCreateTaskModal)}
+	>
+		<div
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			class="bg-black border-2 border-white shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
+			onkeydown={(event) => event.stopPropagation()}
+		>
+			<form
+				method="post"
+				action="?/createTask"
+				use:enhance={() => {
+					return async ({ result, update }) => {
+						if (result.type === 'success') {
+							await update();
+							closeCreateTaskModal();
+						}
+					};
+				}}
+				class="flex flex-col h-full overflow-hidden"
+			>
+				<header class="px-8 pt-8">
+					<h2 class="text-xl font-bold text-white">Create New Task</h2>
+				</header>
 
-				<!-- Skills section -->
-				<div class="mb-4">
-					<label for="skillSearch" class="block text-sm font-medium text-white mb-1">Required Skills</label>
-					
-					<!-- Search box -->
-					<input
-						id="skillSearch"
-						type="text"
-						bind:value={skillSearchTerm}
-						oninput={filterSkills}
-						placeholder="Search for skills..."
-						class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white mb-2"
-					/>
-					
-					<!-- Skills selection area -->
-					<div class="border border-white/30 p-2 mb-2 max-h-32 overflow-y-auto">
-						{#if filteredSkills.length > 0}
-							<div class="space-y-1">
-								{#each filteredSkills as skill}
-									<button 
-										type="button"
-										class="w-full text-left p-2 flex justify-between items-center hover:bg-white/10 {selectedSkillIds.includes(skill.id) ? 'bg-white/10 border-l-4 border-green-500' : ''}"
-										onclick={() => toggleSkillSelection(skill.id)}
-									>
-										<div>
-											<span class="font-medium">{skill.name}</span>
-											{#if skill.category}
-												<span class="ml-2 text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">{skill.category}</span>
+				<div class="flex-1 overflow-y-auto px-8 pb-4 space-y-4">
+					<div>
+						<label for="title" class="block text-sm font-medium text-white mb-1">Task Title</label>
+						<input
+							id="title"
+							name="title"
+							type="text"
+							bind:value={taskTitle}
+							required
+							class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
+							placeholder="Enter task title"
+						/>
+					</div>
+
+					<div>
+						<label for="description" class="block text-sm font-medium text-white mb-1">Description (optional)</label>
+						<textarea
+							id="description"
+							name="description"
+							bind:value={taskDescription}
+							rows="3"
+							class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
+							placeholder="Describe the task"
+						></textarea>
+					</div>
+
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+						<div>
+							<label for="status" class="block text-sm font-medium text-white mb-1">Status</label>
+							<select
+								id="status"
+								name="status"
+								bind:value={taskStatus}
+								class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
+							>
+								<option value="backlog">Backlog</option>
+								<option value="todo">To Do</option>
+								<option value="in-progress">In Progress</option>
+								<option value="done">Done</option>
+							</select>
+						</div>
+
+						<div>
+							<label for="priority" class="block text-sm font-medium text-white mb-1">Priority</label>
+							<select
+								id="priority"
+								name="priority"
+								bind:value={taskPriority}
+								class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
+							>
+								<option value="low">Low</option>
+								<option value="medium">Medium</option>
+								<option value="high">High</option>
+							</select>
+						</div>
+					</div>
+
+					<div>
+						<label for="assignedToIds" class="block text-sm font-medium text-white mb-1">Assign To (optional)</label>
+						<select
+							id="assignedToIds"
+							name="assignedToIds"
+							multiple
+							bind:value={assignedUserIds}
+							class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white h-32"
+						>
+							{#each data.members as member}
+								<option value={member.userId}>{member.username}</option>
+							{/each}
+						</select>
+						<p class="mt-2 text-xs text-gray-400">Hold Ctrl/⌘ to select multiple teammates. Leave empty for no assignees.</p>
+					</div>
+
+					<div>
+						<label for="skillSearch" class="block text-sm font-medium text-white mb-1">Required Skills</label>
+						<input
+							id="skillSearch"
+							type="text"
+							bind:value={skillSearchTerm}
+							oninput={filterSkills}
+							placeholder="Search for skills..."
+							class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white mb-2"
+						/>
+						<div class="border border-white/30 p-2 mb-2 max-h-32 overflow-y-auto">
+							{#if filteredSkills.length > 0}
+								<div class="space-y-1">
+									{#each filteredSkills as skill}
+										<button 
+											type="button"
+											class="w-full text-left p-2 flex justify-between items-center hover:bg-white/10 {selectedSkillIds.includes(skill.id) ? 'bg-white/10 border-l-4 border-green-500' : ''}"
+											onclick={() => toggleSkillSelection(skill.id)}
+										>
+											<div>
+												<span class="font-medium">{skill.name}</span>
+												{#if skill.category}
+													<span class="ml-2 text-xs bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500">{skill.category}</span>
+												{/if}
+											</div>
+											{#if selectedSkillIds.includes(skill.id)}
+												<span class="text-green-500">✓</span>
 											{/if}
-										</div>
-										{#if selectedSkillIds.includes(skill.id)}
-											<span class="text-green-500">✓</span>
-										{/if}
-									</button>
+										</button>
 								{/each}
 							</div>
 						{:else}
 							<p class="text-gray-500 italic text-sm p-2">No skills found</p>
 						{/if}
-					</div>
-					
-					<!-- Selected skills -->
-					<div class="flex flex-wrap gap-2">
-						{#each selectedSkillIds as skillId}
-							{#each filteredSkills.filter(s => s.id === skillId) as skill}
+						</div>
+
+						<div class="flex flex-wrap gap-2">
+							{#each createSelectedSkills as skill}
 								<div class="bg-purple-900/50 px-2 py-1 rounded flex items-center border border-purple-500 text-sm">
 									<span>{skill.name}</span>
-									<button 
+									<button
 										type="button"
 										class="ml-2 text-purple-300 hover:text-white"
 										onclick={() => toggleSkillSelection(skill.id)}
 									>×</button>
 								</div>
 							{/each}
+						</div>
+
+						{#each selectedSkillIds as skillId}
+							<input type="hidden" name="skillIds" value={skillId} />
 						{/each}
 					</div>
-					
-					<!-- Hidden input with selected skills -->
-					{#each selectedSkillIds as skillId}
-						<input type="hidden" name="skillIds" value={skillId} />
-					{/each}
 				</div>
-				
-				<!-- Hidden organization ID field -->
+
 				<input type="hidden" name="organizationId" value={data.organization.id} />
-				
-				<div class="flex space-x-4 mt-6">
+
+				<footer class="px-8 pb-8 pt-4 border-t border-white/30 flex gap-4">
 					<button 
 						type="button"
-						onclick={toggleCreateTaskModal}
+						onclick={closeCreateTaskModal}
 						class="flex-1 px-4 py-2 bg-black text-white border-2 border-white hover:bg-white/10 transition-colors duration-200"
 					>
 						Cancel
@@ -816,7 +1113,178 @@
 					>
 						Create Task
 					</button>
+				</footer>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Edit Task Modal -->
+{#if showEditTaskModal && editingTaskId !== null}
+	<div
+		role="button"
+		tabindex="0"
+		class="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) closeEditTaskModal();
+		}}
+		onkeydown={(event) => handleOverlayKeyDown(event, closeEditTaskModal)}
+	>
+		<div
+			role="dialog"
+			aria-modal="true"
+			tabindex="0"
+			class="bg-black border-2 border-white shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
+	onkeydown={(event) => event.stopPropagation()}
+	>
+			<form method="post" action="?/updateTask" use:enhance={enhanceUpdateTask} class="flex flex-col h-full overflow-hidden">
+				<input type="hidden" name="taskId" value={editingTaskId} />
+
+				<header class="px-8 pt-8 flex items-start justify-between">
+					<h2 class="text-xl font-bold text-white">Edit Task</h2>
+					<button type="button" class="text-white hover:text-gray-300" onclick={closeEditTaskModal}>×</button>
+				</header>
+
+				<div class="flex-1 overflow-y-auto px-8 pb-4 space-y-4">
+					{#if taskEditError}
+						<p class="bg-red-900/40 border border-red-500 text-red-100 px-3 py-2 text-sm">{taskEditError}</p>
+					{/if}
+
+					<div>
+						<label for="edit-title" class="block text-sm font-medium text-white mb-1">Task Title</label>
+						<input
+							id="edit-title"
+							name="title"
+							type="text"
+							bind:value={editTaskTitle}
+							required
+							class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
+						/>
+					</div>
+
+					<div>
+						<label for="edit-description" class="block text-sm font-medium text-white mb-1">Description</label>
+						<textarea
+							id="edit-description"
+							name="description"
+							bind:value={editTaskDescription}
+							rows="3"
+							class="w-full border border-white bg-black px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white"
+						></textarea>
+					</div>
+
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+						<div>
+							<label for="edit-status" class="block text-sm font-medium text-white mb-1">Status</label>
+							<select
+								id="edit-status"
+								name="status"
+								bind:value={editTaskStatus}
+								class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
+							>
+								<option value="backlog">Backlog</option>
+								<option value="todo">To Do</option>
+								<option value="in-progress">In Progress</option>
+								<option value="done">Done</option>
+							</select>
+						</div>
+
+						<div>
+							<label for="edit-priority" class="block text-sm font-medium text-white mb-1">Priority</label>
+							<select
+								id="edit-priority"
+								name="priority"
+								bind:value={editTaskPriority}
+								class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white"
+							>
+								<option value="low">Low</option>
+								<option value="medium">Medium</option>
+								<option value="high">High</option>
+							</select>
+						</div>
+					</div>
+
+					<div>
+						<label for="edit-assignedToIds" class="block text-sm font-medium text-white mb-1">Assigned Members</label>
+						<select
+							id="edit-assignedToIds"
+							name="assignedToIds"
+							multiple
+							bind:value={editAssignedUserIds}
+							class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white h-32"
+						>
+							{#each data.members as member}
+								<option value={member.userId}>{member.username}</option>
+							{/each}
+						</select>
+						<p class="mt-2 text-xs text-gray-400">Hold Ctrl/⌘ to modify multiple assignees. Leave empty for no direct owner.</p>
+					</div>
+
+					<div>
+						<label for="editSkillSearch" class="block text-sm font-medium text-white mb-1">Required Skills</label>
+						<input
+							id="editSkillSearch"
+							type="text"
+							bind:value={editSkillSearchTerm}
+							oninput={filterEditSkills}
+							placeholder="Search for skills..."
+							class="w-full border border-white bg-black px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white mb-2"
+						/>
+						<div class="border border-white/30 p-2 mb-2 max-h-32 overflow-y-auto">
+							{#if editFilteredSkills.length > 0}
+								<div class="space-y-1">
+									{#each editFilteredSkills as skill}
+										<button
+											type="button"
+											class="w-full text-left p-2 flex justify-between items-center hover:bg-white/10 {editSkillIds.includes(skill.id) ? 'bg-white/10 border-l-4 border-green-500' : ''}"
+											onclick={() => toggleEditSkillSelection(skill.id)}
+										>
+											<span class="font-medium">{skill.name}</span>
+											{#if editSkillIds.includes(skill.id)}
+												<span class="text-green-500">✓</span>
+											{/if}
+										</button>
+									{/each}
+								</div>
+							{:else}
+								<p class="text-gray-500 italic text-sm p-2">No skills found</p>
+							{/if}
+						</div>
+
+						<div class="flex flex-wrap gap-2">
+							{#each editSelectedSkills as skill}
+								<div class="bg-purple-900/50 px-2 py-1 rounded flex items-center border border-purple-500 text-sm">
+									<span>{skill.name}</span>
+									<button
+										type="button"
+										class="ml-2 text-purple-300 hover:text-white"
+										onclick={() => toggleEditSkillSelection(skill.id)}
+									>×</button>
+								</div>
+							{/each}
+						</div>
+
+						{#each editSkillIds as skillId}
+							<input type="hidden" name="skillIds" value={skillId} />
+						{/each}
+					</div>
 				</div>
+
+				<footer class="px-8 pb-8 pt-4 border-t border-white/30 flex gap-4">
+					<button
+						type="button"
+						onclick={closeEditTaskModal}
+						class="flex-1 px-4 py-2 bg-black text-white border-2 border-white hover:bg-white/10 transition-colors"
+					>
+						Cancel
+					</button>
+					<button
+						type="submit"
+						class="flex-1 px-4 py-2 bg-white text-black border-2 border-white hover:bg-white/90 transition-colors"
+					>
+						Save Changes
+					</button>
+				</footer>
 			</form>
 		</div>
 	</div>

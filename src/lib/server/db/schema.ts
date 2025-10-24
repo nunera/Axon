@@ -47,10 +47,14 @@ import {
 	skill, 
 	userSkill,
 	taskSkill,
+	taskAssignment,
+	organizationInvitation,
 	interest,
 	userInterest,
 	type Task,
 	type Skill,
+	type TaskAssignment,
+	type OrganizationInvitation,
 	type Interest
 } from './schema-extension';
 
@@ -65,6 +69,8 @@ export {
 	skill, 
 	userSkill,
 	taskSkill,
+	taskAssignment,
+	organizationInvitation,
 	interest,
 	userInterest
 };
@@ -72,5 +78,7 @@ export {
 export type {
 	Task,
 	Skill,
+	TaskAssignment,
+	OrganizationInvitation,
 	Interest
 };

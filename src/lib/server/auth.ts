@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { sha256 } from '@oslojs/crypto/sha2';
 import { encodeBase64url, encodeHexLowerCase } from '@oslojs/encoding';
 import { db } from '$lib/server/db';
@@ -149,7 +149,22 @@ export async function deleteUserAccount(userId: string) {
 	await db
 		.delete(table.userOrganization)
 		.where(eq(table.userOrganization.userId, userId));
-	
+
+	// Remove any outstanding invitations involving this user
+	await db
+		.delete(table.organizationInvitation)
+		.where(
+			or(
+				eq(table.organizationInvitation.inviteeId, userId),
+				eq(table.organizationInvitation.inviterId, userId)
+			)
+		);
+
+	// Remove any task assignments for this user
+	await db
+		.delete(table.taskAssignment)
+		.where(eq(table.taskAssignment.userId, userId));
+
 	// Delete all tasks assigned to this user
 	await db
 		.update(table.task)

@@ -27,6 +27,18 @@
     const taskSkillMap: Record<number, number[]> = {};
     const userSkillMap: Record<string, number[]> = {};
 
+    function resolveAssignees(task: any): { userId: string; username?: string }[] {
+        if (Array.isArray(task?.assignees) && task.assignees.length > 0) {
+            return task.assignees;
+        }
+
+        if (task?.assignedToId) {
+            return [{ userId: task.assignedToId, username: task.assignedToUsername }];
+        }
+
+        return [];
+    }
+
     // Create the graph data structure
     function createGraphData() {
         // Create node datasets
@@ -66,25 +78,26 @@
             if (taskSkills[task.id]) {
                 taskSkillMap[task.id] = taskSkills[task.id].map(skill => skill.id);
             }
-            
+
             // Add task-user edges for assigned tasks
-            if (task.assignedToId) {
+            const assignees = resolveAssignees(task);
+            assignees.forEach((assignee) => {
                 edges.add({
-                    from: `user-${task.assignedToId}`,
+                    from: `user-${assignee.userId}`,
                     to: `task-${task.id}`,
                     arrows: 'to',
                     color: { color: '#10b981', opacity: 1.0 }, // Bright green color
                     width: 3,
                     label: 'assigned',
-                    font: { 
-                        color: '#10b981', 
+                    font: {
+                        color: '#10b981',
                         size: 14,
                         face: 'Arial',
                         background: 'rgba(0, 0, 0, 0.7)',
                         strokeWidth: 2
                     }
                 });
-            }
+            });
         });
         
         // Add user nodes for all members
@@ -121,13 +134,13 @@
         
         // For every task in all columns
         allTasks.forEach(task => {
+            const assignedUserIds = new Set(resolveAssignees(task).map((assignee) => assignee.userId));
             // For every user
             users.forEach(member => {
                 const userId = member.userId;
-                const username = member.username;
                 
                 // Skip if this user is already assigned to the task (we already have a different connection)
-                if (task.assignedToId === userId) return;
+                if (assignedUserIds.has(userId)) return;
                 
                 // Get task skills
                 const taskSkillsList = taskSkills[task.id] || [];
@@ -410,9 +423,14 @@
                         </div>
                         <div>
                             <span class="text-gray-400">Created by:</span>
-                            <span>{selectedNode.data.createdBy}</span>
+                            <span>{selectedNode.data.createdBy ? selectedNode.data.createdBy : 'Unknown'}</span>
                         </div>
-                        {#if selectedNode.data.assignedToUsername}
+                        {#if selectedNode.data.assignees && selectedNode.data.assignees.length > 0}
+                            <div>
+                                <span class="text-gray-400">Assigned to:</span>
+                                <span>{selectedNode.data.assignees.map((assignee: { username: string }) => assignee.username).join(', ')}</span>
+                            </div>
+                        {:else if selectedNode.data.assignedToUsername}
                             <div>
                                 <span class="text-gray-400">Assigned to:</span>
                                 <span>{selectedNode.data.assignedToUsername}</span>
@@ -500,7 +518,7 @@
                                         <span>{matchingTask.title}</span>
                                         <span class="text-xs bg-white/10 px-2 py-0.5 rounded capitalize">{matchingTask.priority}</span>
                                     </div>
-                                    {#if matchingTask.assignedToId === selectedNode.data.id}
+                                    {#if resolveAssignees(matchingTask).some(assignee => assignee.userId === selectedNode.data.id)}
                                         <span class="text-xs text-green-400 mt-1 block">Assigned to this user</span>
                                     {/if}
                                 </div>

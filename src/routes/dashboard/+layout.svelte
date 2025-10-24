@@ -3,6 +3,9 @@
 	
 	// Get user from the parent data
 	$: ({ user } = $page.data);
+
+	let dropdownOpen = false;
+	let profileButton: HTMLButtonElement | null = null;
 </script>
 
 <div class="min-h-screen bg-black text-white flex flex-col">
@@ -29,9 +32,12 @@
 			</div>
 			
 			<div class="flex items-center">
-				<div class="relative group">
+				<div class="relative" role="presentation" onmouseenter={() => dropdownOpen = true} onmouseleave={() => dropdownOpen = false}>
 					<button 
 						class="flex items-center space-x-1 text-white hover:text-white/80 border border-white p-2"
+						onfocus={() => dropdownOpen = true}
+						onblur={() => dropdownOpen = false}
+						bind:this={profileButton}
 					>
 						<span class="hidden md:inline">{user?.username || 'User'}</span>
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -40,7 +46,17 @@
 					</button>
 					
 					<!-- Dropdown Menu -->
-					<div class="absolute right-0 mt-2 w-48 bg-black border border-white shadow-lg hidden group-hover:block">
+					<div 
+						role="menu"
+						tabindex="0"
+						class={`absolute right-0 z-50 w-48 bg-black border border-white shadow-lg ${dropdownOpen ? 'block' : 'hidden'} pt-2`}
+						style="top: 100%;"
+						onmouseenter={() => dropdownOpen = true}
+						onmouseleave={() => dropdownOpen = false}
+						onkeydown={(event) => {
+							if (event.key === 'Escape') dropdownOpen = false;
+						}}
+					>
 						<div class="py-1">
 							<a href="/dashboard/profile" class="block px-4 py-2 hover:bg-white hover:text-black">
 								Profile
