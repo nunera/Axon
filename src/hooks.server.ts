@@ -1,27 +1,14 @@
 import { sequence } from '@sveltejs/kit/hooks';
-import * as auth from '$lib/server/auth.js';
 import type { Handle } from '@sveltejs/kit';
+import { handleBetterAuth, validateRequest } from '$lib/server/auth.js';
 
-const handleAuth: Handle = async ({ event, resolve }) => {
-	const sessionToken = event.cookies.get(auth.sessionCookieName);
+const loadAuthState: Handle = async ({ event, resolve }) => {
+	const { session, user } = await validateRequest(event);
 
-	if (!sessionToken) {
-		event.locals.user = null;
-		event.locals.session = null;
-		return resolve(event);
-	}
-
-	const { session, user } = await auth.validateSessionToken(sessionToken);
-
-	if (session) {
-		auth.setSessionTokenCookie(event, sessionToken, session.expiresAt);
-	} else {
-		auth.deleteSessionTokenCookie(event);
-	}
-
-	event.locals.user = user;
 	event.locals.session = session;
+	event.locals.user = user;
+
 	return resolve(event);
 };
 
-export const handle: Handle = sequence(handleAuth);
+export const handle: Handle = sequence(handleBetterAuth, loadAuthState);

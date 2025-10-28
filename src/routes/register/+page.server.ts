@@ -1,14 +1,7 @@
-import { hash } from '@node-rs/argon2';
-import { encodeBase32LowerCase } from '@oslojs/encoding';
 import { fail, redirect } from '@sveltejs/kit';
-import { DrizzleError } from 'drizzle-orm';
-import * as auth from '$lib/server/auth';
-import { db } from '$lib/server/db';
-import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
-	// Redirect logged-in users to the dashboard
 	if (event.locals.user) {
 		return redirect(302, '/dashboard');
 	}
@@ -18,50 +11,57 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
 	register: async (event) => {
 		const formData = await event.request.formData();
+		const email = formData.get('email');
 		const username = formData.get('username');
 		const password = formData.get('password');
 
+		if (!validateEmail(email)) {
+			return fail(400, { message: 'Invalid email address' });
+		}
 		if (!validateUsername(username)) {
 			return fail(400, {
 				message: 'Invalid username (min 3, max 31 characters, alphanumeric only)'
 			});
 		}
 		if (!validatePassword(password)) {
-			return fail(400, { message: 'Invalid password (min 6, max 255 characters)' });
+			return fail(400, { message: 'Invalid password (min 6 characters)' });
 		}
 
-		const userId = generateUserId();
-		const passwordHash = await hash(password, {
-			memoryCost: 19456,
-			timeCost: 2,
-			outputLen: 32,
-			parallelism: 1
+		const response = await event.fetch('/api/auth/sign-up/email', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				email,
+				password,
+				name: username,
+				displayUsername: username,
+				username
+			})
 		});
 
-		try {
-			await db.insert(table.user).values({ id: userId, username, passwordHash });
-
-			const sessionToken = auth.generateSessionToken();
-			const session = await auth.createSession(sessionToken, userId);
-			auth.setSessionTokenCookie(event, sessionToken, session.expiresAt);
-		} catch (e) {
-			// Handle potential database errors, e.g., unique constraint violation for username
-			if (e instanceof DrizzleError && e.message.includes('UNIQUE constraint failed')) {
-				return fail(400, { message: 'Username already taken' });
+		if (!response.ok) {
+			let message = 'Registration failed';
+			try {
+				const data = await response.json();
+				message = data?.message ?? message;
+			} catch (jsonError) {
+				try {
+					const text = await response.text();
+					message = text || message;
+				} catch (textError) {
+					console.error('Failed to read Better Auth sign-up response body', textError);
+				}
+				console.error('Failed to parse Better Auth sign-up response', jsonError);
 			}
-			console.error('Registration error:', e);
-			return fail(500, { message: 'An unexpected error occurred during registration' });
+			return fail(response.status, { message });
 		}
-		// Redirect to dashboard after successful registration
-		return redirect(302, '/dashboard');
+
+		throw redirect(302, '/dashboard');
 	}
 };
 
-// Helper functions from the original file
-function generateUserId() {
-	const bytes = crypto.getRandomValues(new Uint8Array(15));
-	const id = encodeBase32LowerCase(bytes);
-	return id;
+function validateEmail(email: unknown): email is string {
+	return typeof email === 'string' && email.includes('@');
 }
 
 function validateUsername(username: unknown): username is string {
@@ -74,5 +74,5 @@ function validateUsername(username: unknown): username is string {
 }
 
 function validatePassword(password: unknown): password is string {
-	return typeof password === 'string' && password.length >= 6 && password.length <= 255;
+	return typeof password === 'string' && password.length >= 6;
 }

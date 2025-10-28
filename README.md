@@ -8,7 +8,7 @@ Axon is a collaborative task management platform designed to help teams organize
 
 ## Features
 
-- **User Authentication**: Secure login and registration with Lucia auth
+- **User Authentication**: Secure login and registration backed by Better Auth
 - **Organization Management**: Create and manage multiple organizations
 - **Task Management**: Create, assign, and track tasks with priorities and deadlines
 - **Skill Matching**: AI-powered skill extraction and matching between users and tasks
@@ -22,7 +22,7 @@ Axon is a collaborative task management platform designed to help teams organize
 - **Frontend**: SvelteKit, TailwindCSS
 - **Backend**: Node.js, SvelteKit server routes
 - **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: Lucia Auth
+- **Authentication**: Better Auth
 - **Styling**: TailwindCSS
 - **Containerization**: Docker & Docker Compose
 - **Development**: TypeScript, Vite, ESLint
@@ -57,18 +57,18 @@ Axon is a collaborative task management platform designed to help teams organize
    cp .env.example .env
    ```
 
-   Ensure `DATABASE_URL` points to your local Postgres instance.
+   Ensure `DATABASE_URL` points to your local Postgres instance. Generate a `BETTER_AUTH_SECRET` (32+ character random string) and add it to `.env`. When deploying, set `BETTER_AUTH_URL` to the public origin (omit locally to use `http://localhost:5173`).
 
 4. Start the database with Docker Compose:
 
 ```bash
-docker compose up -v
+docker compose up -d
 ```
 
-To stop the stack:
+To stop the stack and remove volumes:
 
 ```bash
-docker compose down -d
+docker compose down -v
 ```
 
 5. Run database migrations:
@@ -84,6 +84,42 @@ docker compose down -d
    ```
 
 7. Open your browser and navigate to `http://localhost:5173`
+
+### Google OAuth
+
+Axon can authenticate with Google in addition to the username/password flow. Follow these steps to enable it for a local or deployed environment.
+
+1. **Create / select a Google Cloud project**
+   - Visit the [Google Cloud Console](https://console.cloud.google.com/) and choose the project you want to use (or create a new one).
+   - Make sure the **OAuth consent screen** is configured (External is fine for testing). Add `profile` and `email` scopes when prompted and list your test user emails if the app is still in testing.
+
+2. **Create an OAuth 2.0 Client**
+   - Navigate to **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
+   - Choose **Web application** as the application type.
+   - Under **Authorized redirect URIs**, add the callbacks your environment will use:
+     - Local development: `http://localhost:5173/api/auth/callback/google`
+     - Production: `https://<your-domain>/api/auth/callback/google`
+   - Save the client; Google will show you a **Client ID** and **Client Secret**.
+
+3. **Update environment variables**
+   - Add the credentials to `.env` (or your deployment secrets):
+
+     ```env
+     GOOGLE_CLIENT_ID=your-google-client-id
+     GOOGLE_CLIENT_SECRET=your-google-client-secret
+     ```
+
+   - Make sure `BETTER_AUTH_URL` reflects the origin that Google redirects back to (e.g. `http://localhost:5173` for dev or your production URL).
+
+4. **Restart the server**
+   - Restart `npm run dev` (or redeploy) so the new env vars are picked up.
+   - The login page will show a **“Continue with Google”** button only when both Google env variables are present.
+
+5. **Verify the flow**
+   - Click the Google button, continue through the Google consent screen, and ensure you land on `/dashboard` logged in.
+   - Google returns users with the verified email address, so they can sign in again without re-registering.
+
+If you add more social providers later, mirror the pattern used for Google in `src/lib/server/auth.ts`.
 
 ### Running with Docker
 
@@ -125,6 +161,20 @@ npm run db:push
 npm run db:studio
 ```
 
+#### Generating new migrations
+
+The repository now tracks a single baseline migration (`drizzle/0000_*.sql`).
+When you modify tables in `src/lib/server/db/schema.ts`, generate a new
+incremental migration rather than editing the baseline:
+
+```bash
+npx dotenv -e .env -- drizzle-kit generate --name add_task_labels
+npm run db:push
+```
+
+Commit the generated SQL file in `drizzle/` and the corresponding snapshot in
+`drizzle/meta/` along with the code that depends on it.
+
 ## Contributing
 
 Before starting, read the contributor guide in [`AGENTS.md`](AGENTS.md) for repo-specific workflow and quality expectations.
@@ -143,5 +193,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [SvelteKit](https://kit.svelte.dev/)
 - [Drizzle ORM](https://orm.drizzle.team/)
-- [Lucia Auth](https://lucia-auth.com/)
+- [Better Auth](https://www.better-auth.com/)
 - [TailwindCSS](https://tailwindcss.com/)

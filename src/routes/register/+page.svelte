@@ -88,6 +88,18 @@
 		<form method="post" action="?/register" use:enhance class="mt-8 space-y-6">
 			<div class="space-y-4 shadow-sm">
 				<div>
+					<label for="email" class="sr-only">Email</label>
+					<input
+						id="email"
+						name="email"
+						type="email"
+						autocomplete="email"
+						required
+						class="placeholder-opacity-50 relative block w-full appearance-none border border-white bg-black px-3 py-2 text-white placeholder-white focus:z-10 focus:border-white focus:ring-white focus:outline-none sm:text-sm"
+						placeholder="Email"
+					/>
+				</div>
+				<div>
 					<label for="username" class="sr-only">Username</label>
 					<input
 						id="username"

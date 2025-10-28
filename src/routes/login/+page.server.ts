@@ -1,13 +1,8 @@
-import { verify } from '@node-rs/argon2';
 import { fail, redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
-import * as auth from '$lib/server/auth';
-import { db } from '$lib/server/db';
-import * as table from '$lib/server/db/schema';
+import type { Redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
-	// Redirect logged-in users to the dashboard
 	if (event.locals.user) {
 		return redirect(302, '/dashboard');
 	}
@@ -26,37 +21,89 @@ export const actions: Actions = {
 			});
 		}
 		if (!validatePassword(password)) {
-			return fail(400, { message: 'Invalid password (min 6, max 255 characters)' });
+			return fail(400, { message: 'Invalid password (min 6 characters)' });
 		}
 
-		const results = await db.select().from(table.user).where(eq(table.user.username, username));
-
-		const existingUser = results.at(0);
-		if (!existingUser) {
-			// NOTE: Returning the same message for timing attacks
-			return fail(400, { message: 'Incorrect username or password' });
-		}
-
-		const validPassword = await verify(existingUser.passwordHash, password, {
-			memoryCost: 19456,
-			timeCost: 2,
-			outputLen: 32,
-			parallelism: 1
+		const response = await event.fetch('/api/auth/sign-in/username', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ username, password })
 		});
-		if (!validPassword) {
-			return fail(400, { message: 'Incorrect username or password' });
+
+		if (!response.ok) {
+			let message = 'Incorrect username or password';
+			try {
+				const data = await response.json();
+				message = data?.message ?? message;
+			} catch (jsonError) {
+				try {
+					const text = await response.text();
+					message = text || message;
+				} catch (textError) {
+					console.error('Failed to read Better Auth sign-in response body', textError);
+				}
+				console.error('Failed to parse Better Auth sign-in response', jsonError);
+			}
+			return fail(response.status, { message });
 		}
 
-		const sessionToken = auth.generateSessionToken();
-		const session = await auth.createSession(sessionToken, existingUser.id);
-		auth.setSessionTokenCookie(event, sessionToken, session.expiresAt);
+		throw redirect(302, '/dashboard');
+	},
 
-		// Redirect to dashboard after successful login
-		return redirect(302, '/dashboard');
+	loginWithGoogle: async (event) => {
+		const callbackURL = `${event.url.origin}/dashboard`;
+		const errorCallbackURL = `${event.url.origin}/login`;
+
+		let response: Response;
+		try {
+			response = await event.fetch('/api/auth/sign-in/social', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					provider: 'google',
+					callbackURL,
+					errorCallbackURL,
+					disableRedirect: true
+				})
+			});
+		} catch (err) {
+			if (err && typeof err === 'object' && 'location' in err && 'status' in err) {
+				throw err as Redirect;
+			}
+			throw err;
+		}
+
+		if (!response.ok) {
+			if (response.status >= 300 && response.status < 400) {
+				const location = response.headers.get('location');
+				if (location) {
+					throw redirect(302, location);
+				}
+			}
+			let message = 'Unable to redirect to Google';
+			try {
+				const data = await response.json();
+				message = data?.message ?? message;
+			} catch (jsonError) {
+				try {
+					const text = await response.text();
+					message = text || message;
+				} catch (textError) {
+					console.error('Failed to read Better Auth OAuth response body', textError);
+				}
+				console.error('Failed to parse Better Auth OAuth response', jsonError);
+			}
+			return fail(response.status ?? 500, { message });
+		}
+
+		const data = await response.json();
+		if (data?.url) {
+			throw redirect(302, data.url as string);
+		}
+		throw redirect(302, '/login');
 	}
 };
 
-// Keep validation functions
 function validateUsername(username: unknown): username is string {
 	return (
 		typeof username === 'string' &&
@@ -67,5 +114,5 @@ function validateUsername(username: unknown): username is string {
 }
 
 function validatePassword(password: unknown): password is string {
-	return typeof password === 'string' && password.length >= 6 && password.length <= 255;
+	return typeof password === 'string' && password.length >= 6;
 }

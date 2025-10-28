@@ -1,9 +1,8 @@
-import * as auth from '$lib/server/auth';
+import { deleteUserAccount } from '$lib/server/auth';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
-	// Redirect unauthenticated users to the login page
 	if (!event.locals.user) {
 		return redirect(302, '/login');
 	}
@@ -12,31 +11,53 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
 	logout: async (event) => {
-		if (!event.locals.session) {
-			return fail(401);
-		}
-		await auth.invalidateSession(event.locals.session.id);
-		auth.deleteSessionTokenCookie(event);
+		const response = await event.fetch('/api/auth/sign-out', { method: 'POST' });
 
-		// Redirect to login page after logout
-		return redirect(302, '/login');
+		if (!response.ok) {
+			let message = 'Failed to sign out';
+			try {
+				const data = await response.json();
+				message = data?.message ?? message;
+			} catch (jsonError) {
+				try {
+					const text = await response.text();
+					message = text || message;
+				} catch (textError) {
+					console.error('Failed to read Better Auth sign-out response body', textError);
+				}
+				console.error('Failed to parse Better Auth sign-out response', jsonError);
+			}
+			return fail(response.status ?? 500, { message });
+		}
+
+		throw redirect(302, '/login');
 	},
 
 	deleteAccount: async (event) => {
-		if (!event.locals.session || !event.locals.user) {
+		if (!event.locals.user) {
 			return fail(401);
 		}
 
-		// Get the user ID
-		const userId = event.locals.user.id;
+		await deleteUserAccount(event.locals.user.id);
 
-		// Delete the user account - this will also delete their sessions
-		await auth.deleteUserAccount(userId);
+		const response = await event.fetch('/api/auth/sign-out', { method: 'POST' });
+		if (!response.ok) {
+			let message = 'Failed to clear session';
+			try {
+				const data = await response.json();
+				message = data?.message ?? message;
+			} catch (jsonError) {
+				try {
+					const text = await response.text();
+					message = text || message;
+				} catch (textError) {
+					console.error('Failed to read Better Auth logout response body', textError);
+				}
+				console.error('Failed to parse Better Auth logout response', jsonError);
+			}
+			return fail(response.status ?? 500, { message });
+		}
 
-		// Delete the session cookie
-		auth.deleteSessionTokenCookie(event);
-
-		// Redirect to homepage after account deletion
-		return redirect(302, '/');
+		throw redirect(302, '/');
 	}
 };

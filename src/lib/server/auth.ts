@@ -1,182 +1,259 @@
-import type { RequestEvent } from '@sveltejs/kit';
-import { eq, and, or } from 'drizzle-orm';
-import { sha256 } from '@oslojs/crypto/sha2';
-import { encodeBase64url, encodeHexLowerCase } from '@oslojs/encoding';
+import type { Handle, RequestEvent } from '@sveltejs/kit';
+import { betterAuth } from 'better-auth';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { username } from 'better-auth/plugins';
+import type { SocialProviders } from 'better-auth/social-providers';
+import { svelteKitHandler } from 'better-auth/svelte-kit';
+import { and, eq, or } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import * as table from '$lib/server/db/schema';
+import * as schema from '$lib/server/db/schema';
+import { getEnv } from '$lib/server/env';
 
-const DAY_IN_MS = 1000 * 60 * 60 * 24;
 
-export const sessionCookieName = 'auth-session';
+const BETTER_AUTH_SECRET = getEnv('BETTER_AUTH_SECRET');
+const BETTER_AUTH_BASE_URL = getEnv('BETTER_AUTH_URL', 'http://localhost:5173');
+const GOOGLE_CLIENT_ID = getEnv('GOOGLE_CLIENT_ID');
+const GOOGLE_CLIENT_SECRET = getEnv('GOOGLE_CLIENT_SECRET');
 
-export function generateSessionToken() {
-	const bytes = crypto.getRandomValues(new Uint8Array(18));
-	const token = encodeBase64url(bytes);
-	return token;
+if (!BETTER_AUTH_SECRET) {
+	throw new Error('BETTER_AUTH_SECRET is not set');
 }
 
-export async function createSession(token: string, userId: string) {
-	const sessionId = encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
-	const session: table.Session = {
-		id: sessionId,
-		userId,
-		expiresAt: new Date(Date.now() + DAY_IN_MS * 30)
+const socialProviders: SocialProviders = {};
+
+if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
+	const redirectURI = new URL('/api/auth/callback/google', BETTER_AUTH_BASE_URL).toString();
+	socialProviders.google = {
+		clientId: GOOGLE_CLIENT_ID,
+		clientSecret: GOOGLE_CLIENT_SECRET,
+		scope: ['openid', 'profile', 'email'],
+		redirectURI,
+		prompt: 'consent',
+		accessType: 'offline'
 	};
-	await db.insert(table.session).values(session);
-	return session;
 }
 
-export async function validateSessionToken(token: string) {
-	const sessionId = encodeHexLowerCase(sha256(new TextEncoder().encode(token)));
-	const [result] = await db
-		.select({
-			// Adjust user table here to tweak returned data
-			user: { id: table.user.id, username: table.user.username },
-			session: table.session
+function sanitizeUsernameCandidate(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]/g, '')
+		.replace(/-{2,}/g, '-')
+		.replace(/_{2,}/g, '_')
+		.replace(/^-+/, '')
+		.replace(/-+$/, '')
+		.slice(0, 31);
+}
+
+function randomSuffix(length = 4): string {
+	const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	let output = '';
+	for (let i = 0; i < length; i += 1) {
+		output += alphabet[Math.floor(Math.random() * alphabet.length)];
+	}
+	return output;
+}
+
+async function generateAvailableUsername(user: { email?: string | null; name?: string | null }): Promise<string> {
+	const preferred: string[] = [];
+	if (user.email) {
+		preferred.push(user.email.split('@')[0] ?? '');
+	}
+	if (user.name) {
+		preferred.push(user.name);
+	}
+	preferred.push('axon');
+
+	for (const candidate of preferred) {
+		const base = sanitizeUsernameCandidate(candidate);
+		if (base.length < 3) continue;
+		let suffix = 0;
+		while (suffix < 100) {
+			const suffixPart = suffix === 0 ? '' : `${suffix}`;
+			const trimmedBase = base.slice(0, Math.max(3, 31 - suffixPart.length));
+			const username = `${trimmedBase}${suffixPart}`;
+			const existing = await db
+				.select({ id: schema.user.id })
+				.from(schema.user)
+				.where(eq(schema.user.username, username))
+				.limit(1);
+			if (existing.length === 0 && username.length >= 3) {
+				return username;
+			}
+			suffix += 1;
+		}
+	}
+
+	return `axon_${randomSuffix(6)}`;
+}
+
+export const auth = betterAuth({
+	secret: BETTER_AUTH_SECRET,
+	baseURL: BETTER_AUTH_BASE_URL,
+	database: drizzleAdapter(db, {
+		provider: 'pg',
+		user: schema.user,
+		session: schema.session,
+		account: schema.account,
+		verification: schema.verification
+	}),
+	emailAndPassword: {
+		enabled: true
+	},
+	session: {
+		cookie: {
+			name: 'axon-session'
+		}
+	},
+	socialProviders,
+	databaseHooks: {
+		user: {
+			create: {
+				before: async (user) => {
+					if (user.username) {
+						if (!user.displayUsername) {
+							return {
+								data: {
+									...user,
+									displayUsername: user.name ?? user.username
+								}
+							};
+						}
+						return;
+					}
+
+					const username = await generateAvailableUsername(user);
+					return {
+						data: {
+							...user,
+							username,
+							displayUsername: user.name ?? user.displayUsername ?? username
+						}
+					};
+				}
+			}
+		}
+	},
+	plugins: [
+		username({
+			field: 'username',
+			displayField: 'displayUsername'
 		})
-		.from(table.session)
-		.innerJoin(table.user, eq(table.session.userId, table.user.id))
-		.where(eq(table.session.id, sessionId));
+	]
+});
 
-	if (!result) {
-		return { session: null, user: null };
+type AuthState = {
+	session: Record<string, unknown> | null;
+	user: Record<string, unknown> | null;
+};
+
+export const handleBetterAuth: Handle = async ({ event, resolve }) => {
+	return svelteKitHandler({ auth, event, resolve });
+};
+
+export async function validateRequest(event: RequestEvent): Promise<AuthState> {
+	try {
+		const response = await event.fetch('/api/auth/get-session', {
+			headers: { accept: 'application/json' }
+		});
+
+		if (response.ok) {
+			const data = await response.json();
+			return {
+				session: data?.session ?? null,
+				user: data?.user ?? null
+			};
+		}
+
+		if (response.status === 401) {
+			return { session: null, user: null };
+		}
+
+		console.warn('Unexpected Better Auth session response', response.status);
+	} catch (error) {
+		console.error('Failed to fetch Better Auth session', error);
 	}
-	const { session, user } = result;
 
-	const sessionExpired = Date.now() >= session.expiresAt.getTime();
-	if (sessionExpired) {
-		await db.delete(table.session).where(eq(table.session.id, session.id));
-		return { session: null, user: null };
-	}
-
-	const renewSession = Date.now() >= session.expiresAt.getTime() - DAY_IN_MS * 15;
-	if (renewSession) {
-		session.expiresAt = new Date(Date.now() + DAY_IN_MS * 30);
-		await db
-			.update(table.session)
-			.set({ expiresAt: session.expiresAt })
-			.where(eq(table.session.id, session.id));
-	}
-
-	return { session, user };
+	return { session: null, user: null };
 }
 
-export type SessionValidationResult = Awaited<ReturnType<typeof validateSessionToken>>;
-
-export async function invalidateSession(sessionId: string) {
-	await db.delete(table.session).where(eq(table.session.id, sessionId));
-}
-
-export function setSessionTokenCookie(event: RequestEvent, token: string, expiresAt: Date) {
-	event.cookies.set(sessionCookieName, token, {
-		expires: expiresAt,
-		path: '/'
-	});
-}
-
-export function deleteSessionTokenCookie(event: RequestEvent) {
-	event.cookies.delete(sessionCookieName, {
-		path: '/'
-	});
-}
+export type BetterAuthSession = Awaited<ReturnType<typeof validateRequest>>['session'];
+export type BetterAuthUser = Awaited<ReturnType<typeof validateRequest>>['user'];
 
 export async function deleteUserAccount(userId: string) {
-	// Check if user has created any organizations
 	const createdOrganizations = await db
 		.select()
-		.from(table.organization)
-		.where(eq(table.organization.createdById, userId));
+		.from(schema.organization)
+		.where(eq(schema.organization.createdById, userId));
 
 	if (createdOrganizations.length > 0) {
-		// Process each organization the user created
 		for (const org of createdOrganizations) {
-			// Get all organization members
 			const members = await db
 				.select()
-				.from(table.userOrganization)
-				.where(eq(table.userOrganization.organizationId, org.id));
+				.from(schema.userOrganization)
+				.where(eq(schema.userOrganization.organizationId, org.id));
 
-			// Find another admin to transfer ownership, if any
 			const otherAdmin = members.find((m) => m.userId !== userId && m.role === 'admin');
 
 			if (otherAdmin) {
-				// Transfer ownership to another admin
 				await db
-					.update(table.organization)
+					.update(schema.organization)
 					.set({ createdById: otherAdmin.userId })
-					.where(eq(table.organization.id, org.id));
+					.where(eq(schema.organization.id, org.id));
 			} else if (members.length > 1) {
-				// No other admin but there are other members - promote the first non-creator member to admin and transfer ownership
 				const firstMember = members.find((m) => m.userId !== userId);
 				if (firstMember) {
-					// Update member role to admin
 					await db
-						.update(table.userOrganization)
+						.update(schema.userOrganization)
 						.set({ role: 'admin' })
 						.where(
 							and(
-								eq(table.userOrganization.userId, firstMember.userId),
-								eq(table.userOrganization.organizationId, org.id)
+								eq(schema.userOrganization.userId, firstMember.userId),
+								eq(schema.userOrganization.organizationId, org.id)
 							)
 						);
 
-					// Transfer ownership
 					await db
-						.update(table.organization)
+						.update(schema.organization)
 						.set({ createdById: firstMember.userId })
-						.where(eq(table.organization.id, org.id));
+						.where(eq(schema.organization.id, org.id));
 				}
 			} else {
-				// This is the only member - delete the organization and its related data
+				await db.delete(schema.task).where(eq(schema.task.organizationId, org.id));
 
-				// Delete all tasks associated with this organization first
-				await db.delete(table.task).where(eq(table.task.organizationId, org.id));
-
-				// Delete user memberships
 				await db
-					.delete(table.userOrganization)
-					.where(eq(table.userOrganization.organizationId, org.id));
+					.delete(schema.userOrganization)
+					.where(eq(schema.userOrganization.organizationId, org.id));
 
-				// Delete the organization
-				await db.delete(table.organization).where(eq(table.organization.id, org.id));
+				await db.delete(schema.organization).where(eq(schema.organization.id, org.id));
 			}
 		}
 	}
 
-	// Delete all associations with organizations
-	await db.delete(table.userOrganization).where(eq(table.userOrganization.userId, userId));
+	await db.delete(schema.userOrganization).where(eq(schema.userOrganization.userId, userId));
 
-	// Remove any outstanding invitations involving this user
 	await db
-		.delete(table.organizationInvitation)
+		.delete(schema.organizationInvitation)
 		.where(
 			or(
-				eq(table.organizationInvitation.inviteeId, userId),
-				eq(table.organizationInvitation.inviterId, userId)
+				eq(schema.organizationInvitation.inviteeId, userId),
+				eq(schema.organizationInvitation.inviterId, userId)
 			)
 		);
 
-	// Remove any task assignments for this user
-	await db.delete(table.taskAssignment).where(eq(table.taskAssignment.userId, userId));
+	await db.delete(schema.taskAssignment).where(eq(schema.taskAssignment.userId, userId));
 
-	// Delete all tasks assigned to this user
 	await db
-		.update(table.task)
+		.update(schema.task)
 		.set({ assignedToId: null })
-		.where(eq(table.task.assignedToId, userId));
+		.where(eq(schema.task.assignedToId, userId));
 
-	// Delete all tasks created by this user (optional - might want to keep them)
-	// await db.delete(table.task).where(eq(table.task.createdById, userId));
+	await db.delete(schema.userInterest).where(eq(schema.userInterest.userId, userId));
 
-	// Delete user interests
-	await db.delete(table.userInterest).where(eq(table.userInterest.userId, userId));
+	await db.delete(schema.userSkill).where(eq(schema.userSkill.userId, userId));
 
-	// Delete user skills
-	await db.delete(table.userSkill).where(eq(table.userSkill.userId, userId));
+	await db.delete(schema.account).where(eq(schema.account.userId, userId));
+	await db.delete(schema.session).where(eq(schema.session.userId, userId));
+	await db.delete(schema.verification).where(eq(schema.verification.userId, userId));
 
-	// Delete all user sessions
-	await db.delete(table.session).where(eq(table.session.userId, userId));
-
-	// Finally, delete the user
-	await db.delete(table.user).where(eq(table.user.id, userId));
+	await db.delete(schema.user).where(eq(schema.user.id, userId));
 }

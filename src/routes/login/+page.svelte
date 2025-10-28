@@ -122,6 +122,21 @@
 				</button>
 			</div>
 		</form>
+		<form method="post" action="?/loginWithGoogle" use:enhance class="mt-4">
+			<button
+				type="submit"
+				class="flex w-full items-center justify-center gap-2 border border-white/40 bg-transparent px-4 py-2 text-sm font-medium text-white transition-colors duration-200 hover:border-white hover:bg-white hover:text-black focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black focus:outline-none"
+			>
+				<img
+					src="https://cdn.worldvectorlogo.com/logos/google-new.svg"
+					alt="Google logo"
+					class="h-4 w-auto"
+					height="16"
+					width="48"
+				/>
+				Continue with Google
+			</button>
+		</form>
 		<p class="mt-6 text-center text-sm text-white">
 			Don't have an account?
 			<a href="/register" class="font-medium text-white underline hover:text-white/80"
