@@ -178,8 +178,8 @@ Commit the generated SQL file in `drizzle/` and the corresponding snapshot in
 ## Contributors
 
 - [Michael Kryvonis](https://github.com/nunera)
-- [Zachary](https://github.com/ZacharySF)
-- Fiona
+- [Zachary Stubbs](https://github.com/ZacharySF)
+- Fiona An
 
 ## Contributing
 
