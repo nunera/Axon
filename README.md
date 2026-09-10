@@ -175,6 +175,12 @@ npm run db:push
 Commit the generated SQL file in `drizzle/` and the corresponding snapshot in
 `drizzle/meta/` along with the code that depends on it.
 
+## Contributors
+
+- [Michael Kryvonis](https://github.com/nunera)
+- [Zachary](https://github.com/ZacharySF)
+- Fiona
+
 ## Contributing
 
 Before starting, read the contributor guide in [`AGENTS.md`](AGENTS.md) for repo-specific workflow and quality expectations.
